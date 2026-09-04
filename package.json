@@ -4,10 +4,11 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "prepare:sources": "node scripts/extract-sources.mjs",
     "prepare:assets": "node scripts/extract-assets.mjs",
-    "dev": "npm run prepare:assets && vite",
-    "typecheck": "tsc -b --pretty false",
-    "build": "npm run prepare:assets && tsc -b && vite build",
+    "dev": "npm run prepare:sources && npm run prepare:assets && vite",
+    "typecheck": "npm run prepare:sources && tsc -b --pretty false",
+    "build": "npm run prepare:sources && npm run prepare:assets && tsc -b && vite build",
     "preview": "vite preview",
     "deploy": "npm run build && wrangler deploy"
   },
