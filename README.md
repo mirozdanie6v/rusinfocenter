@@ -7,6 +7,7 @@ React + TypeScript migration of the RIC Nha Trang Telegram Mini App demo.
 - TypeScript
 - Vite / Node.js build toolchain
 - Cloudflare Workers Static Assets
+- Wrangler 4
 
 ## Commands
 ```bash
@@ -24,11 +25,22 @@ npm run dev
 - Deploy config: `wrangler.jsonc`
 - CI: `.github/workflows/deploy-cloudflare.yml`
 
-Required GitHub Actions secrets:
+### Manual deploy
+```bash
+npm install
+npx wrangler login
+npx wrangler whoami
+npm run deploy
+```
+
+### Automatic deploy from GitHub
+Every push to `main` runs typecheck, builds the Vite application and deploys it with Wrangler.
+
+Required GitHub Actions repository secrets:
 - `CLOUDFLARE_API_TOKEN`
 - `CLOUDFLARE_ACCOUNT_ID`
 
-The Cloudflare account must own the `viiversion.com` zone. The hostname must not already be occupied by a conflicting CNAME before Wrangler creates the Worker Custom Domain.
+The Cloudflare account must own the `viiversion.com` zone. The hostname `rusinfocenter.viiversion.com` must not be occupied by a conflicting DNS record before Wrangler creates the Worker Custom Domain.
 
 ## Prototype boundary
 Payment, Telegram sending and backend writes remain demo/mocked. The UI and client-side scenarios are preserved from v32 and now compile through the React/TypeScript application layer.
