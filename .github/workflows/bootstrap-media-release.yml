@@ -1,0 +1,58 @@
+name: Bootstrap RIC media release
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/bootstrap-media-release.yml
+
+permissions:
+  contents: write
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    env:
+      API_BASE: https://api.firestorage.ai/dev/file
+      SHARE_ID: J-3ukq_XeNqc
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Download media bundles from Firestorage
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p bundles
+          curl -fsSL "$API_BASE/shares/$SHARE_ID/files?maxResults=1000" -o /tmp/files.json
+          jq -e '.files | length >= 4' /tmp/files.json >/dev/null
+
+          declare -A EXPECTED
+          EXPECTED[assets-1.tar.gz]=1566778
+          EXPECTED[assets-2.tar.gz]=1535450
+          EXPECTED[assets-3.tar.gz]=871227
+          EXPECTED[assets-4.tar.gz]=497557
+
+          for name in assets-1.tar.gz assets-2.tar.gz assets-3.tar.gz assets-4.tar.gz; do
+            id=$(jq -r --arg n "$name" '.files[] | select(.fileName == $n) | .fileId' /tmp/files.json | head -1)
+            test -n "$id" && test "$id" != "null"
+            curl -fsS -X POST "$API_BASE/shares/$SHARE_ID/files/$id/download" -o /tmp/download.json
+            url=$(jq -r '.downloadUrl // .url // .download_url // empty' /tmp/download.json)
+            test -n "$url"
+            curl -fL --retry 3 --retry-delay 2 "$url" -o "bundles/$name"
+            size=$(stat -c%s "bundles/$name")
+            test "$size" -eq "${EXPECTED[$name]}"
+            gzip -t "bundles/$name"
+            echo "$name OK ($size bytes)"
+          done
+
+      - name: Publish permanent GitHub media release
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! gh release view media-v32 >/dev/null 2>&1; then
+            gh release create media-v32 --title "RIC v32 media" --notes "Production media bundles for the React/TypeScript migration."
+          fi
+          gh release upload media-v32 bundles/assets-1.tar.gz bundles/assets-2.tar.gz bundles/assets-3.tar.gz bundles/assets-4.tar.gz --clobber
+          gh release view media-v32 --json url,assets
