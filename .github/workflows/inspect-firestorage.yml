@@ -13,36 +13,41 @@ jobs:
   inspect:
     runs-on: ubuntu-latest
     steps:
-      - name: Inspect Firestorage client API
+      - name: Inspect Firestorage chunks and API
         shell: bash
         run: |
           set -euo pipefail
           BASE='https://firestorage.ai'
           SHARE='https://firestorage.ai/ja/f/J-3ukq_XeNqc'
           curl -L --fail --silent --show-error "$SHARE" -o /tmp/share.html
-          CHUNK=$(grep -Eo '/_next/static/chunks/app/\(files\)/ja/f/page-[A-Za-z0-9]+\.js' /tmp/share.html | head -1)
-          echo "chunk=$CHUNK"
-          test -n "$CHUNK"
-          curl -L --fail --silent --show-error "$BASE$CHUNK" -o /tmp/page.js
-          echo "JS bytes: $(wc -c </tmp/page.js)"
-          echo '--- API paths ---'
-          grep -Eo '["'"'"'`](/api/[^"'"'"'` ]+|https?://[^"'"'"'` ]+)["'"'"'`]' /tmp/page.js | sed 's/^["'"'"'`]//;s/["'"'"'`]$//' | sort -u | head -300 || true
-          echo '--- download/share/file context ---'
+          echo '--- page route chunk ---'
+          ROUTE=$(grep -Eo '/_next/static/chunks/app/\(files\)/ja/f/page-[A-Za-z0-9]+\.js' /tmp/share.html | head -1)
+          curl -L --fail --silent --show-error "$BASE$ROUTE" -o /tmp/route.js
+          cat /tmp/route.js
+          echo
+          echo '--- downloading all referenced JS chunks ---'
+          mkdir -p /tmp/chunks
+          grep -Eo 'src="/_next/static/[^"]+\.js"' /tmp/share.html | sed 's/^src="//;s/"$//' | sort -u > /tmp/chunks.txt
+          while IFS= read -r p; do
+            f="/tmp/chunks/$(echo "$p" | tr '/()' '___')"
+            curl -L --fail --silent --show-error "$BASE$p" -o "$f" || true
+          done </tmp/chunks.txt
+          cat /tmp/chunks/* > /tmp/all.js
+          echo "combined bytes: $(wc -c </tmp/all.js)"
+          echo '--- filenames ---'
+          grep -oE '.{0,220}assets-[1-4]\.tar\.gz.{0,420}' /tmp/all.js | head -80 || true
+          echo '--- API endpoints ---'
+          grep -Eo '/api/[A-Za-z0-9_./?=&${}:%-]+' /tmp/all.js | sort -u | head -300 || true
+          echo '--- relevant contexts ---'
           python - <<'PY'
           from pathlib import Path
-          s=Path('/tmp/page.js').read_text(errors='ignore')
-          needles=['download','share','publicId','shareId','fileName','files','presign','signed','object']
-          seen=set()
-          for n in needles:
-              start=0
-              while True:
+          s=Path('/tmp/all.js').read_text(errors='ignore')
+          for n in ['download','presign','signed','shareId','publicId','file_id','fileId','files/','objectKey','storage']:
+              print('\n###',n)
+              start=0; count=0
+              while count < 12:
                   i=s.lower().find(n.lower(),start)
                   if i<0: break
-                  frag=s[max(0,i-220):min(len(s),i+420)].replace('\\n',' ')
-                  if frag not in seen:
-                      print('\n---',n,'---\n',frag[:900])
-                      seen.add(frag)
-                  start=i+len(n)
-                  if len(seen)>120: break
-              if len(seen)>120: break
+                  print(s[max(0,i-260):min(len(s),i+520)].replace('\\n',' ')[:1000])
+                  start=i+len(n); count+=1
           PY
