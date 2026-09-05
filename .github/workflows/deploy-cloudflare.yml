@@ -1,6 +1,9 @@
 name: Deploy RIC to Cloudflare
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -9,19 +12,42 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
+
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
           node-version: 22
+
+      - name: Download production media
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p bundles
+          gh release download media-v32 --repo "${{ github.repository }}" --pattern 'assets-*.tar.gz' --dir bundles
+          test "$(stat -c%s bundles/assets-1.tar.gz)" -eq 1566778
+          test "$(stat -c%s bundles/assets-2.tar.gz)" -eq 1535450
+          test "$(stat -c%s bundles/assets-3.tar.gz)" -eq 871227
+          test "$(stat -c%s bundles/assets-4.tar.gz)" -eq 497557
+          gzip -t bundles/assets-1.tar.gz
+          gzip -t bundles/assets-2.tar.gz
+          gzip -t bundles/assets-3.tar.gz
+          gzip -t bundles/assets-4.tar.gz
+
       - name: Install dependencies
         run: npm install
+
       - name: Typecheck
         run: npm run typecheck
+
       - name: Build
         run: npm run build
+
       - name: Deploy to Cloudflare Workers
         uses: cloudflare/wrangler-action@v4
         with:
