@@ -13,16 +13,36 @@ jobs:
   inspect:
     runs-on: ubuntu-latest
     steps:
-      - name: Inspect public share HTML
+      - name: Inspect Firestorage client API
         shell: bash
         run: |
           set -euo pipefail
-          URL='https://firestorage.ai/ja/f/J-3ukq_XeNqc'
-          curl -L --fail --silent --show-error "$URL" -o /tmp/share.html
-          echo "HTML bytes: $(wc -c </tmp/share.html)"
-          echo '--- asset filenames ---'
-          grep -nE 'assets-[1-4]\.tar\.gz' /tmp/share.html || true
-          echo '--- candidate URLs/hrefs ---'
-          grep -Eo '(href|src)="[^"]+"|https?://[^" <]+' /tmp/share.html | grep -Ei 'download|assets-|api|file' | head -200 || true
-          echo '--- API-ish strings ---'
-          grep -Eo '/[A-Za-z0-9_./?=&%-]{8,}' /tmp/share.html | grep -Ei 'download|api|file|share' | sort -u | head -200 || true
+          BASE='https://firestorage.ai'
+          SHARE='https://firestorage.ai/ja/f/J-3ukq_XeNqc'
+          curl -L --fail --silent --show-error "$SHARE" -o /tmp/share.html
+          CHUNK=$(grep -Eo '/_next/static/chunks/app/\(files\)/ja/f/page-[A-Za-z0-9]+\.js' /tmp/share.html | head -1)
+          echo "chunk=$CHUNK"
+          test -n "$CHUNK"
+          curl -L --fail --silent --show-error "$BASE$CHUNK" -o /tmp/page.js
+          echo "JS bytes: $(wc -c </tmp/page.js)"
+          echo '--- API paths ---'
+          grep -Eo '["'"'"'`](/api/[^"'"'"'` ]+|https?://[^"'"'"'` ]+)["'"'"'`]' /tmp/page.js | sed 's/^["'"'"'`]//;s/["'"'"'`]$//' | sort -u | head -300 || true
+          echo '--- download/share/file context ---'
+          python - <<'PY'
+          from pathlib import Path
+          s=Path('/tmp/page.js').read_text(errors='ignore')
+          needles=['download','share','publicId','shareId','fileName','files','presign','signed','object']
+          seen=set()
+          for n in needles:
+              start=0
+              while True:
+                  i=s.lower().find(n.lower(),start)
+                  if i<0: break
+                  frag=s[max(0,i-220):min(len(s),i+420)].replace('\\n',' ')
+                  if frag not in seen:
+                      print('\n---',n,'---\n',frag[:900])
+                      seen.add(frag)
+                  start=i+len(n)
+                  if len(seen)>120: break
+              if len(seen)>120: break
+          PY
