@@ -4,8 +4,8 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve, sep } from "node:path";
 
 const root = resolve(process.cwd());
-const bundlePath = resolve(root, "bundles/source.tar.gz.b64");
-const expectedSha256 = "a138d077bc8764c909e8da8c6335dfda90a3f18b35acb8bb872785ccf21f044f";
+const bundlePath = resolve(root, "bundles/source.tar.gz");
+const expectedSha256 = "f7bb87a668e9b791509d1929c5ab8bff43bb01f3831d9ea3b8c9a9345205db08";
 
 function readString(buf, start, length) {
   return buf.subarray(start, start + length).toString("utf8").replace(/\0.*$/, "").trim();
@@ -48,12 +48,9 @@ function extractTar(buffer) {
   return extracted;
 }
 
-const base64 = readFileSync(bundlePath, "utf8").trim();
-const archive = Buffer.from(base64, "base64");
+const archive = readFileSync(bundlePath);
 const actualSha256 = createHash("sha256").update(archive).digest("hex");
-if (actualSha256 !== expectedSha256) {
-  throw new Error(`Source bundle checksum mismatch: ${actualSha256}`);
-}
+if (actualSha256 !== expectedSha256) throw new Error(`Source bundle checksum mismatch: ${actualSha256}`);
 const extracted = extractTar(gunzipSync(archive));
 if (extracted !== 5) throw new Error(`Expected 5 source files, extracted ${extracted}`);
 console.log(`RIC TypeScript sources restored (${extracted} files, checksum OK).`);
