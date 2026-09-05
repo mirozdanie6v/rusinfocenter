@@ -1,0 +1,28 @@
+name: Inspect media share
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/inspect-firestorage.yml
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Inspect public share HTML
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL='https://firestorage.ai/ja/f/J-3ukq_XeNqc'
+          curl -L --fail --silent --show-error "$URL" -o /tmp/share.html
+          echo "HTML bytes: $(wc -c </tmp/share.html)"
+          echo '--- asset filenames ---'
+          grep -nE 'assets-[1-4]\.tar\.gz' /tmp/share.html || true
+          echo '--- candidate URLs/hrefs ---'
+          grep -Eo '(href|src)="[^"]+"|https?://[^" <]+' /tmp/share.html | grep -Ei 'download|assets-|api|file' | head -200 || true
+          echo '--- API-ish strings ---'
+          grep -Eo '/[A-Za-z0-9_./?=&%-]{8,}' /tmp/share.html | grep -Ei 'download|api|file|share' | sort -u | head -200 || true
