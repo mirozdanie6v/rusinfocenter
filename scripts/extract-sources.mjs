@@ -5,7 +5,7 @@ import { dirname, resolve, sep } from "node:path";
 
 const root = resolve(process.cwd());
 const bundlePath = resolve(root, "bundles/source.tar.gz.b64");
-const expectedSha256 = "f7bb87a668e9b791509d1929c5ab8bff43bb01f3831d9ea3b8c9a9345205db08";
+const expectedSha256 = "a138d077bc8764c909e8da8c6335dfda90a3f18b35acb8bb872785ccf21f044f";
 
 function readString(buf, start, length) {
   return buf.subarray(start, start + length).toString("utf8").replace(/\0.*$/, "").trim();
