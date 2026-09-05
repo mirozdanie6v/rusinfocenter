@@ -24,16 +24,22 @@ jobs:
         with:
           node-version: 22
 
-      - name: Download production media
+      - name: Download verified production bundles
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p bundles
           gh release download media-v32 --repo "${{ github.repository }}" --pattern 'assets-*.tar.gz' --dir bundles
+          gh release download source-v32 --repo "${{ github.repository }}" --pattern 'source.tar.gz' --dir bundles
+
           test "$(stat -c%s bundles/assets-1.tar.gz)" -eq 1566778
           test "$(stat -c%s bundles/assets-2.tar.gz)" -eq 1535450
           test "$(stat -c%s bundles/assets-3.tar.gz)" -eq 871227
           test "$(stat -c%s bundles/assets-4.tar.gz)" -eq 497557
+          test "$(stat -c%s bundles/source.tar.gz)" -eq 96037
+
+          echo 'f7bb87a668e9b791509d1929c5ab8bff43bb01f3831d9ea3b8c9a9345205db08  bundles/source.tar.gz' | sha256sum -c -
+          gzip -t bundles/source.tar.gz
           gzip -t bundles/assets-1.tar.gz
           gzip -t bundles/assets-2.tar.gz
           gzip -t bundles/assets-3.tar.gz
