@@ -30,15 +30,15 @@ jobs:
           set -euo pipefail
           mkdir -p bundles
           gh release download media-v32 --repo "${{ github.repository }}" --pattern 'assets-*.tar.gz' --dir bundles
-          gh release download source-v32 --repo "${{ github.repository }}" --pattern 'source.tar.gz' --dir bundles
+          gh release download source-v33 --repo "${{ github.repository }}" --pattern 'source.tar.gz' --dir bundles
 
           test "$(stat -c%s bundles/assets-1.tar.gz)" -eq 1566778
           test "$(stat -c%s bundles/assets-2.tar.gz)" -eq 1535450
           test "$(stat -c%s bundles/assets-3.tar.gz)" -eq 871227
           test "$(stat -c%s bundles/assets-4.tar.gz)" -eq 497557
-          test "$(stat -c%s bundles/source.tar.gz)" -eq 96037
+          test "$(stat -c%s bundles/source.tar.gz)" -eq 96169
 
-          echo 'f7bb87a668e9b791509d1929c5ab8bff43bb01f3831d9ea3b8c9a9345205db08  bundles/source.tar.gz' | sha256sum -c -
+          echo '87c721e8c695b3e13e356b8f656ed3e26b6831ca6c16855f196061dc38e96752  bundles/source.tar.gz' | sha256sum -c -
           gzip -t bundles/source.tar.gz
           gzip -t bundles/assets-1.tar.gz
           gzip -t bundles/assets-2.tar.gz
