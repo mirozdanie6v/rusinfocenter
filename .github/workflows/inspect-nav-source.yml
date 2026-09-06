@@ -15,14 +15,35 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v5
-      - name: Download source bundle
+      - name: Inspect exact navigation markup and CSS
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p bundles /tmp/ric-src
           gh release download source-v32 --repo "${{ github.repository }}" --pattern 'source.tar.gz' --dir bundles
           tar -xzf bundles/source.tar.gz -C /tmp/ric-src
-          echo '=== FILES ==='
-          find /tmp/ric-src/src -maxdepth 2 -type f -print
-          echo '=== MENU MATCHES ==='
-          grep -Rni -C 8 -E 'Меню|menu|bottom-nav|bottom nav|nav-label|nav-item|mobile-nav|hamburger' /tmp/ric-src/src || true
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          pages = Path('/tmp/ric-src/src/generated/pages.ts').read_text(encoding='utf-8')
+          css = Path('/tmp/ric-src/src/styles.css').read_text(encoding='utf-8')
+
+          print('=== HEADER MENU MARKUP SAMPLES ===')
+          positions = [m.start() for m in re.finditer('header-menu-text', pages)]
+          for p in positions[:3]:
+              print(repr(pages[max(0, p-500):p+350]))
+
+          print('=== HEADER MENU CSS BLOCKS ===')
+          for m in re.finditer(r'[^{}]*header-menu[^{}]*\{[^{}]*\}', css, re.S):
+              block = m.group(0).strip()
+              if len(block) < 2500:
+                  print(block)
+
+          print('=== MOBILE NAV CSS BLOCKS ===')
+          for selector in ['mobile-bar', 'mobile-link']:
+              for m in re.finditer(r'[^{}]*\.' + re.escape(selector) + r'[^{}]*\{[^{}]*\}', css, re.S):
+                  block = m.group(0).strip()
+                  if len(block) < 2500:
+                      print(block)
+          PY
