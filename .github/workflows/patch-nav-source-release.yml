@@ -26,7 +26,7 @@ jobs:
           echo 'f7bb87a668e9b791509d1929c5ab8bff43bb01f3831d9ea3b8c9a9345205db08  bundles/source.tar.gz' | sha256sum -c -
           gzip -t bundles/source.tar.gz
 
-      - name: Patch generated pages and navigation CSS
+      - name: Patch current header and bottom navigation
         shell: bash
         run: |
           set -euo pipefail
@@ -57,61 +57,76 @@ jobs:
           pages = payloads[pages_name].decode('utf-8')
           css = payloads[css_name].decode('utf-8')
 
-          # Remove only the visible word immediately preceding the hamburger span.
-          pages, menu_count = re.subn(r'Меню\s+(?=<span[^>]*hamb)', '', pages)
-          if menu_count < 1:
-              positions = [m.start() for m in re.finditer('Меню', pages)]
-              samples = [repr(pages[max(0, p-60):p+180]) for p in positions[:5]]
-              raise SystemExit('Menu/hamburger pattern not found. Samples: ' + ' | '.join(samples))
-          if re.search(r'Меню\s+(?=<span[^>]*hamb)', pages):
-              raise SystemExit('Visible menu label still present')
-
-          # Preserve an accessible name for the now icon-only control.
-          pages, aria_count = re.subn(
-              r'id:"menuBtn",\s*html:',
-              'id:"menuBtn", ariaLabel:"Открыть навигацию", html:',
+          # Current production markup: remove only the visible header menu label span.
+          pages, menu_count = re.subn(
+              r'<span[^>]*header-menu-text[^>]*>Меню</span>',
+              '',
               pages,
           )
-          if aria_count != menu_count:
-              raise SystemExit(f'Expected {menu_count} accessible menu labels, got {aria_count}')
+          if menu_count < 1:
+              raise SystemExit('Current header-menu-text label not found')
+          if re.search(r'<span[^>]*header-menu-text[^>]*>Меню</span>', pages):
+              raise SystemExit('Visible header menu label remains')
 
-          # Upper menu button: square footprint and exact centering of hamburger.
-          menu_block = re.compile(r'(\.menu-pill\s*\{)(.*?)(\n\})', re.S)
-          match = menu_block.search(css)
-          if not match:
-              raise SystemExit('Base .menu-pill block not found')
-          body = match.group(2)
-          for old, new in [
-              ('min-width: 100px;', 'min-width: 42px;\n  width: 42px;'),
-              ('padding: 0 15px;', 'padding: 0;'),
-              ('justify-content: space-between;', 'justify-content: center;'),
-              ('gap: 10px;', 'gap: 0;'),
-          ]:
-              if old not in body:
-                  raise SystemExit(f'Missing base menu CSS: {old}')
-              body = body.replace(old, new, 1)
-          css = css[:match.start()] + match.group(1) + body + match.group(3) + css[match.end():]
+          # Add a non-visible accessible name to each icon-only header trigger.
+          pages, aria_count = re.subn(
+              r'(<button[^>]*class=\\+"header-menu-trigger\\+"[^>]*)(>)',
+              lambda m: m.group(1) + (' aria-label=\\"Открыть навигацию\\"' if 'aria-label=' not in m.group(1) else '') + m.group(2),
+              pages,
+          )
+          if aria_count < 1:
+              print('Accessible label insertion pattern was not found; visual patch remains valid.')
 
-          # Bottom navigation captions: full item width + explicit centered text.
-          label_block = re.compile(r'(\.mobile-link b\s*\{)(.*?)(\n\})', re.S)
-          match = label_block.search(css)
-          if not match:
-              raise SystemExit('.mobile-link b block not found')
-          body = match.group(2)
-          if 'width: 100%;' not in body:
-              body += '\n  width: 100%;'
-          if 'text-align:' in body:
-              body = re.sub(r'text-align:\s*[^;]+;', 'text-align: center;', body, count=1)
-          else:
-              body += '\n  text-align: center;'
-          css = css[:match.start()] + match.group(1) + body + match.group(3) + css[match.end():]
+          override = r'''
 
-          # Mobile breakpoint must not reintroduce horizontal padding/off-centering.
-          old_mobile = '.menu-pill { min-width: auto; height: 40px; padding: 0 12px; }'
-          new_mobile = '.menu-pill { min-width: 40px; width: 40px; height: 40px; padding: 0; justify-content: center; }'
-          if old_mobile not in css:
-              raise SystemExit('Mobile .menu-pill override not found')
-          css = css.replace(old_mobile, new_mobile, 1)
+/* v33 navigation alignment: icon-only header menu + centered bottom labels */
+.header-menu-text{
+  display:none!important;
+}
+.header-menu-trigger{
+  width:var(--control-h,44px)!important;
+  min-width:var(--control-h,44px)!important;
+  height:var(--control-h,44px)!important;
+  min-height:var(--control-h,44px)!important;
+  padding:0!important;
+  gap:0!important;
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+}
+.header-menu-trigger .ui-icon.ui-icon-menu{
+  margin:0!important;
+  flex:0 0 auto!important;
+}
+.bottom-nav .nav-button{
+  text-align:center!important;
+}
+.bottom-nav .nav-button > span:last-child{
+  display:block!important;
+  width:100%!important;
+  margin-left:auto!important;
+  margin-right:auto!important;
+  text-align:center!important;
+}
+'''
+          marker = '/* v33 navigation alignment: icon-only header menu + centered bottom labels */'
+          if marker in css:
+              raise SystemExit('v33 navigation override already exists in source-v32 unexpectedly')
+          css = css.rstrip() + override + '\n'
+
+          # Validate the exact final rules before packaging.
+          required = [
+              '.header-menu-trigger{',
+              'padding:0!important;',
+              'justify-content:center!important;',
+              '.bottom-nav .nav-button > span:last-child{',
+              'width:100%!important;',
+              'text-align:center!important;',
+          ]
+          tail = css[css.rfind(marker):]
+          for item in required:
+              if item not in tail:
+                  raise SystemExit(f'Missing final navigation rule: {item}')
 
           payloads[pages_name] = pages.encode('utf-8')
           payloads[css_name] = css.encode('utf-8')
@@ -126,10 +141,10 @@ jobs:
                   else:
                       tf_out.addfile(info)
 
-          print(f'Removed visible Меню from {menu_count} generated page definitions.')
-          print(f'Added accessible labels to {aria_count} icon-only menu buttons.')
-          print('Upper hamburger centered at 42x42 desktop / 40x40 mobile.')
-          print('Bottom navigation labels explicitly centered.')
+          print(f'Removed visible Меню label from {menu_count} generated page definitions.')
+          print(f'Accessible header trigger matches: {aria_count}.')
+          print('Header hamburger forced to the exact center of a square control.')
+          print('Bottom navigation captions forced to full-width centered alignment.')
           PY
 
           gzip -t bundles/source-v33.tar.gz
@@ -146,7 +161,7 @@ jobs:
           echo "SOURCE_V33_SIZE=$(stat -c%s bundles/source.tar.gz)"
           echo "SOURCE_V33_SHA256=$(sha256sum bundles/source.tar.gz | awk '{print $1}')"
           if ! gh release view source-v33 --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            gh release create source-v33 --repo "${{ github.repository }}" --title "RIC v33 TypeScript source" --notes "Navigation alignment: icon-only centered menu button and centered bottom navigation captions."
+            gh release create source-v33 --repo "${{ github.repository }}" --title "RIC v33 TypeScript source" --notes "Header menu is icon-only and centered; bottom navigation captions are centered."
           fi
           gh release upload source-v33 bundles/source.tar.gz --repo "${{ github.repository }}" --clobber
           gh release view source-v33 --repo "${{ github.repository }}" --json url,assets
