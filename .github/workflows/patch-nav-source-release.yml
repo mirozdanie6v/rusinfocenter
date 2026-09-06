@@ -57,23 +57,23 @@ jobs:
           pages = payloads[pages_name].decode('utf-8')
           css = payloads[css_name].decode('utf-8')
 
-          visible_label = 'Меню <span class="hamb" aria-hidden="true"><i></i><i></i><i></i></span>'
-          replacement = '<span class="hamb" aria-hidden="true"><i></i><i></i><i></i></span>'
-          menu_count = pages.count(visible_label)
+          # Remove only the visible word immediately preceding the hamburger span.
+          pages, menu_count = re.subn(r'Меню\s+(?=<span[^>]*hamb)', '', pages)
           if menu_count < 1:
-              raise SystemExit('Visible Меню label pattern not found')
-          pages = pages.replace(visible_label, replacement)
-          if visible_label in pages:
-              raise SystemExit('Visible Меню label still present after replacement')
+              positions = [m.start() for m in re.finditer('Меню', pages)]
+              samples = [repr(pages[max(0, p-60):p+180]) for p in positions[:5]]
+              raise SystemExit('Menu/hamburger pattern not found. Samples: ' + ' | '.join(samples))
+          if re.search(r'Меню\s+(?=<span[^>]*hamb)', pages):
+              raise SystemExit('Visible menu label still present')
 
-          # Keep the icon-only button accessible without adding visible text/tooltips.
+          # Preserve an accessible name for the now icon-only control.
           pages, aria_count = re.subn(
-              r'id:"menuBtn",\s*html:([\'\"])<span class="hamb"',
-              r'id:"menuBtn", ariaLabel:"Открыть навигацию", html:\1<span class="hamb"',
+              r'id:"menuBtn",\s*html:',
+              'id:"menuBtn", ariaLabel:"Открыть навигацию", html:',
               pages,
           )
           if aria_count != menu_count:
-              raise SystemExit(f'Expected {menu_count} menu aria replacements, got {aria_count}')
+              raise SystemExit(f'Expected {menu_count} accessible menu labels, got {aria_count}')
 
           # Upper menu button: square footprint and exact centering of hamburger.
           menu_block = re.compile(r'(\.menu-pill\s*\{)(.*?)(\n\})', re.S)
@@ -127,7 +127,7 @@ jobs:
                       tf_out.addfile(info)
 
           print(f'Removed visible Меню from {menu_count} generated page definitions.')
-          print(f'Added accessible labels to {aria_count} menu buttons.')
+          print(f'Added accessible labels to {aria_count} icon-only menu buttons.')
           print('Upper hamburger centered at 42x42 desktop / 40x40 mobile.')
           print('Bottom navigation labels explicitly centered.')
           PY
