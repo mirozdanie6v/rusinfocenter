@@ -1,0 +1,115 @@
+name: Patch RIC navigation source release
+
+on:
+  push:
+    paths:
+      - .github/workflows/patch-nav-source-release.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Download and verify source-v32
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p bundles work
+          gh release download source-v32 --repo "${{ github.repository }}" --pattern 'source.tar.gz' --dir bundles
+          test "$(stat -c%s bundles/source.tar.gz)" -eq 96037
+          echo 'f7bb87a668e9b791509d1929c5ab8bff43bb01f3831d9ea3b8c9a9345205db08  bundles/source.tar.gz' | sha256sum -c -
+          tar -xzf bundles/source.tar.gz -C work
+
+      - name: Apply navigation alignment changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          app_path = Path('work/src/App.tsx')
+          css_path = Path('work/src/styles.css')
+          app = app_path.read_text(encoding='utf-8')
+          css = css_path.read_text(encoding='utf-8')
+
+          # Remove the visible word «Меню» but preserve an accessible name.
+          pattern = re.compile(
+              r'(<button className="menu-pill" id="menuBtn" type="button" onClick=\{openMenu\})>\s*<span>Меню</span>\s*(<span className="hamb" aria-hidden="true">)',
+              re.M,
+          )
+          app, n = pattern.subn(r'\1 aria-label="Меню" title="Меню">\n              \2', app, count=1)
+          if n != 1:
+              raise SystemExit(f'Expected one menu button replacement, got {n}')
+          if '<span>Меню</span>' in app:
+              raise SystemExit('Visible menu label still present')
+
+          # Desktop menu button: match the search button footprint and center hamburger.
+          menu_block = re.compile(r'(\.menu-pill\s*\{)(.*?)(\n\})', re.S)
+          match = menu_block.search(css)
+          if not match:
+              raise SystemExit('Base .menu-pill block not found')
+          body = match.group(2)
+          replacements = [
+              ('min-width: 100px;', 'min-width: 42px;\n  width: 42px;'),
+              ('padding: 0 15px;', 'padding: 0;'),
+              ('justify-content: space-between;', 'justify-content: center;'),
+              ('gap: 10px;', 'gap: 0;'),
+          ]
+          for old, new in replacements:
+              if old not in body:
+                  raise SystemExit(f'Missing base menu CSS: {old}')
+              body = body.replace(old, new, 1)
+          css = css[:match.start()] + match.group(1) + body + match.group(3) + css[match.end():]
+
+          # Explicitly center every bottom navigation caption in its full item width.
+          label_block = re.compile(r'(\.mobile-link b\s*\{)(.*?)(\n\})', re.S)
+          match = label_block.search(css)
+          if not match:
+              raise SystemExit('.mobile-link b block not found')
+          body = match.group(2)
+          if 'text-align:' not in body:
+              body += '\n  width: 100%;\n  text-align: center;'
+          else:
+              body = re.sub(r'text-align:\s*[^;]+;', 'text-align: center;', body, count=1)
+              if 'width: 100%;' not in body:
+                  body += '\n  width: 100%;'
+          css = css[:match.start()] + match.group(1) + body + match.group(3) + css[match.end():]
+
+          # Mobile breakpoint previously restored horizontal padding; make the button square and centered there too.
+          old_mobile = '.menu-pill { min-width: auto; height: 40px; padding: 0 12px; }'
+          new_mobile = '.menu-pill { min-width: 40px; width: 40px; height: 40px; padding: 0; justify-content: center; }'
+          if old_mobile not in css:
+              raise SystemExit('Mobile .menu-pill override not found')
+          css = css.replace(old_mobile, new_mobile, 1)
+
+          app_path.write_text(app, encoding='utf-8')
+          css_path.write_text(css, encoding='utf-8')
+          PY
+
+          echo '=== PATCH CHECK ==='
+          grep -n -A7 -B2 'id="menuBtn"' work/src/App.tsx
+          grep -n -A22 '^\.menu-pill {' work/src/styles.css | head -25
+          grep -n -A12 '^\.mobile-link b {' work/src/styles.css
+          grep -n 'menu-pill { min-width: 40px' work/src/styles.css
+
+      - name: Package and publish source-v33
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f bundles/source.tar.gz
+          tar -czf bundles/source.tar.gz -C work src
+          gzip -t bundles/source.tar.gz
+          echo "SOURCE_V33_SIZE=$(stat -c%s bundles/source.tar.gz)"
+          echo "SOURCE_V33_SHA256=$(sha256sum bundles/source.tar.gz | awk '{print $1}')"
+          if ! gh release view source-v33 --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release create source-v33 --repo "${{ github.repository }}" --title "RIC v33 TypeScript source" --notes "Navigation alignment: icon-only centered menu button and centered bottom navigation captions."
+          fi
+          gh release upload source-v33 bundles/source.tar.gz --repo "${{ github.repository }}" --clobber
+          gh release view source-v33 --repo "${{ github.repository }}" --json url,assets
