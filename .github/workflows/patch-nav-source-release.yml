@@ -26,7 +26,7 @@ jobs:
           echo 'f7bb87a668e9b791509d1929c5ab8bff43bb01f3831d9ea3b8c9a9345205db08  bundles/source.tar.gz' | sha256sum -c -
           gzip -t bundles/source.tar.gz
 
-      - name: Apply navigation alignment changes inside archive
+      - name: Patch generated pages and navigation CSS
         shell: bash
         run: |
           set -euo pipefail
@@ -42,37 +42,40 @@ jobs:
 
           with tarfile.open(src, 'r:gz') as tf:
               members = tf.getmembers()
-              names = [m.name for m in members]
-              print('Archive members:')
-              for name in names:
-                  print(name)
-
-              app_candidates = [m for m in members if m.isfile() and m.name.endswith('src/App.tsx')]
+              pages_candidates = [m for m in members if m.isfile() and m.name.endswith('src/generated/pages.ts')]
               css_candidates = [m for m in members if m.isfile() and m.name.endswith('src/styles.css')]
-              if len(app_candidates) != 1 or len(css_candidates) != 1:
-                  raise SystemExit(f'Expected one App.tsx/styles.css, got {len(app_candidates)}/{len(css_candidates)}')
-              app_name = app_candidates[0].name
+              if len(pages_candidates) != 1 or len(css_candidates) != 1:
+                  raise SystemExit(f'Expected one pages.ts/styles.css, got {len(pages_candidates)}/{len(css_candidates)}')
+              pages_name = pages_candidates[0].name
               css_name = css_candidates[0].name
-
               payloads = {}
               for m in members:
                   if m.isfile():
                       f = tf.extractfile(m)
                       payloads[m.name] = f.read() if f else b''
 
-          app = payloads[app_name].decode('utf-8')
+          pages = payloads[pages_name].decode('utf-8')
           css = payloads[css_name].decode('utf-8')
 
-          # Visible word removed; button remains accessible to screen readers.
-          pattern = re.compile(
-              r'(<button className="menu-pill" id="menuBtn" type="button" onClick=\{openMenu\})>\s*<span>Меню</span>\s*(<span className="hamb" aria-hidden="true">)',
-              re.M,
-          )
-          app, n = pattern.subn(r'\1 aria-label="Меню" title="Меню">\n              \2', app, count=1)
-          if n != 1 or '<span>Меню</span>' in app:
-              raise SystemExit(f'Menu label replacement failed: replacements={n}')
+          visible_label = 'Меню <span class="hamb" aria-hidden="true"><i></i><i></i><i></i></span>'
+          replacement = '<span class="hamb" aria-hidden="true"><i></i><i></i><i></i></span>'
+          menu_count = pages.count(visible_label)
+          if menu_count < 1:
+              raise SystemExit('Visible Меню label pattern not found')
+          pages = pages.replace(visible_label, replacement)
+          if visible_label in pages:
+              raise SystemExit('Visible Меню label still present after replacement')
 
-          # Base menu button: same square footprint as the search button; hamburger centered.
+          # Keep the icon-only button accessible without adding visible text/tooltips.
+          pages, aria_count = re.subn(
+              r'id:"menuBtn",\s*html:([\'\"])<span class="hamb"',
+              r'id:"menuBtn", ariaLabel:"Открыть навигацию", html:\1<span class="hamb"',
+              pages,
+          )
+          if aria_count != menu_count:
+              raise SystemExit(f'Expected {menu_count} menu aria replacements, got {aria_count}')
+
+          # Upper menu button: square footprint and exact centering of hamburger.
           menu_block = re.compile(r'(\.menu-pill\s*\{)(.*?)(\n\})', re.S)
           match = menu_block.search(css)
           if not match:
@@ -89,7 +92,7 @@ jobs:
               body = body.replace(old, new, 1)
           css = css[:match.start()] + match.group(1) + body + match.group(3) + css[match.end():]
 
-          # Bottom navigation captions get the full item width and explicit centering.
+          # Bottom navigation captions: full item width + explicit centered text.
           label_block = re.compile(r'(\.mobile-link b\s*\{)(.*?)(\n\})', re.S)
           match = label_block.search(css)
           if not match:
@@ -103,48 +106,40 @@ jobs:
               body += '\n  text-align: center;'
           css = css[:match.start()] + match.group(1) + body + match.group(3) + css[match.end():]
 
-          # Mobile breakpoint previously restored side padding. Keep a true centered 40x40 button.
+          # Mobile breakpoint must not reintroduce horizontal padding/off-centering.
           old_mobile = '.menu-pill { min-width: auto; height: 40px; padding: 0 12px; }'
           new_mobile = '.menu-pill { min-width: 40px; width: 40px; height: 40px; padding: 0; justify-content: center; }'
           if old_mobile not in css:
               raise SystemExit('Mobile .menu-pill override not found')
           css = css.replace(old_mobile, new_mobile, 1)
 
-          payloads[app_name] = app.encode('utf-8')
+          payloads[pages_name] = pages.encode('utf-8')
           payloads[css_name] = css.encode('utf-8')
 
           with tarfile.open(out, 'w:gz') as tf_out:
-              with tarfile.open(src, 'r:gz') as tf_in:
-                  for member in tf_in.getmembers():
-                      info = copy.copy(member)
-                      if member.isfile():
-                          data = payloads[member.name]
-                          info.size = len(data)
-                          tf_out.addfile(info, io.BytesIO(data))
-                      else:
-                          tf_out.addfile(info)
+              for member in members:
+                  info = copy.copy(member)
+                  if member.isfile():
+                      data = payloads[member.name]
+                      info.size = len(data)
+                      tf_out.addfile(info, io.BytesIO(data))
+                  else:
+                      tf_out.addfile(info)
 
-          print('\n=== APP CHECK ===')
-          for line in app.splitlines():
-              if 'id="menuBtn"' in line or 'className="hamb"' in line:
-                  print(line)
-          print('\n=== CSS CHECK ===')
-          base = menu_block.search(css)
-          print((base.group(1) + base.group(2) + base.group(3)) if base else 'missing')
-          label = label_block.search(css)
-          print((label.group(1) + label.group(2) + label.group(3)) if label else 'missing')
-          print(new_mobile)
+          print(f'Removed visible Меню from {menu_count} generated page definitions.')
+          print(f'Added accessible labels to {aria_count} menu buttons.')
+          print('Upper hamburger centered at 42x42 desktop / 40x40 mobile.')
+          print('Bottom navigation labels explicitly centered.')
           PY
 
-          mv bundles/source-v33.tar.gz bundles/source-patched.tar.gz
-          gzip -t bundles/source-patched.tar.gz
+          gzip -t bundles/source-v33.tar.gz
+          tar -tzf bundles/source-v33.tar.gz >/dev/null
 
       - name: Publish source-v33
         shell: bash
         run: |
           set -euo pipefail
-          mv bundles/source-patched.tar.gz bundles/source.tar.gz.new
-          mv bundles/source.tar.gz.new /tmp/source-v33.tar.gz
+          mv bundles/source-v33.tar.gz /tmp/source-v33.tar.gz
           rm -f bundles/source.tar.gz
           cp /tmp/source-v33.tar.gz bundles/source.tar.gz
           gzip -t bundles/source.tar.gz
