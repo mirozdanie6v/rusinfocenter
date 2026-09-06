@@ -1,0 +1,28 @@
+name: Inspect RIC navigation source
+
+on:
+  push:
+    paths:
+      - .github/workflows/inspect-nav-source.yml
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Download source bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p bundles /tmp/ric-src
+          gh release download source-v32 --repo "${{ github.repository }}" --pattern 'source.tar.gz' --dir bundles
+          tar -xzf bundles/source.tar.gz -C /tmp/ric-src
+          echo '=== FILES ==='
+          find /tmp/ric-src/src -maxdepth 2 -type f -print
+          echo '=== MENU MATCHES ==='
+          grep -Rni -C 8 -E 'Меню|menu|bottom-nav|bottom nav|nav-label|nav-item|mobile-nav|hamburger' /tmp/ric-src/src || true
