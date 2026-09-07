@@ -1,0 +1,28 @@
+name: Inspect Telegram links
+
+on:
+  push:
+    paths:
+      - .github/workflows/inspect-telegram-links.yml
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect current source release
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ric-src
+          gh release download source-v33 -p source.tar.gz -D /tmp
+          tar -xzf /tmp/source.tar.gz -C /tmp/ric-src
+          echo '=== TELEGRAM URLS / BOT HANDLES ==='
+          grep -RhoE 'https?://t\.me/[A-Za-z0-9_+/?=&.-]+|@[A-Za-z0-9_]{5,}([Bb][Oo][Tt])' /tmp/ric-src 2>/dev/null | sort -u || true
+          echo '=== TELEGRAM CONTEXT ==='
+          grep -RniE 'telegram|t\.me|web_app|bot' /tmp/ric-src --include='*.html' --include='*.ts' --include='*.tsx' --include='*.js' --include='*.json' 2>/dev/null | head -200 || true
