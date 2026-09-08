@@ -18,7 +18,7 @@ jobs:
       - name: Checkout operations branch
         uses: actions/checkout@v5
 
-      - name: Checkout current UNIQ Smart Rent Stage 8
+      - name: Checkout current UNIQ Smart Rent Stage 9
         uses: actions/checkout@v5
         with:
           repository: mirozdanie6v/uniq-smart-rent
@@ -45,17 +45,11 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
-          list=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/d1/database?name=uniq-smart-rent-db&per_page=100" \
-            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}")
+          list=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/d1/database?name=uniq-smart-rent-db&per_page=100" -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}")
           test "$(echo "$list" | jq -r '.success')" = "true"
           db_id=$(echo "$list" | jq -r '.result[0].uuid // empty')
           if [ -z "$db_id" ]; then
-            created=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/d1/database" \
-              -X POST \
-              -H 'Content-Type: application/json' \
-              -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-              --data '{"name":"uniq-smart-rent-db","primary_location_hint":"apac"}')
-            echo "$created" | jq '{success, result: {name: .result.name, uuid: .result.uuid}, errors}'
+            created=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/d1/database" -X POST -H 'Content-Type: application/json' -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" --data '{"name":"uniq-smart-rent-db","primary_location_hint":"apac"}')
             test "$(echo "$created" | jq -r '.success')" = "true"
             db_id=$(echo "$created" | jq -r '.result.uuid')
           fi
@@ -96,17 +90,12 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
-          response=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains" \
-            -X PUT \
-            -H 'Content-Type: application/json' \
-            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-            --data '{"hostname":"uniq-smart-rent.viiversion.com","service":"uniq-smart-rent","zone_id":"56fa9423ef85e05559f453af43ec400f","zone_name":"viiversion.com"}')
-          echo "$response" | jq '{success, result: {hostname: .result.hostname, service: .result.service, zone_name: .result.zone_name, environment: .result.environment}, errors}'
+          response=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains" -X PUT -H 'Content-Type: application/json' -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" --data '{"hostname":"uniq-smart-rent.viiversion.com","service":"uniq-smart-rent","zone_id":"56fa9423ef85e05559f453af43ec400f","zone_name":"viiversion.com"}')
           test "$(echo "$response" | jq -r '.success')" = "true"
           test "$(echo "$response" | jq -r '.result.hostname')" = "uniq-smart-rent.viiversion.com"
           test "$(echo "$response" | jq -r '.result.service')" = "uniq-smart-rent"
 
-      - name: Verify custom domain and Stage 8
+      - name: Verify custom domain and Stage 9
         shell: bash
         run: |
           set -euo pipefail
@@ -118,24 +107,21 @@ jobs:
               asset=$(grep -oE 'src="[^"]*assets/index-[^"]+\.js"' /tmp/uniq-home.html | head -1 | cut -d'"' -f2 || true)
               if [ -n "$asset" ]; then
                 curl -fsSL "$base$asset" -o /tmp/uniq-app.js
-                if grep -q 'Деньги бизнеса — в одном экране' /tmp/uniq-app.js && grep -q 'Все движения денег' /tmp/uniq-app.js; then
+                if grep -q 'ТО, ремонт и осмотры' /tmp/uniq-app.js && grep -q 'ProviderLogo' /tmp/uniq-app.js; then
                   health=$(curl -fsSL "$base/api/health")
-                  finance=$(curl -fsSL -H 'x-uniq-demo-role: owner' "$base/api/owner/finance?period=7d&branch=all")
-                  test "$(echo "$health" | jq -r '.schemaVersion')" = "8"
-                  test "$(echo "$health" | jq -r '.ownerFinance')" = "true"
-                  test "$(echo "$health" | jq -r '.refunds')" = "true"
-                  test "$(echo "$health" | jq -r '.deposits')" = "true"
-                  test "$(echo "$finance" | jq -r '.branches | length')" = "2"
-                  test "$(echo "$finance" | jq -r '.transactions | length')" -ge 8
-                  test "$(echo "$finance" | jq -r '.summary.grossPaymentsVnd')" -gt 0
-                  test "$(echo "$finance" | jq -r '.summary.depositsHeldVnd')" -gt 0
-                  echo "Verified $base/: HTTP 200 + Stage 8 finance UI + D1 finance API"
+                  service=$(curl -fsSL -H 'x-uniq-demo-role: owner' "$base/api/owner/service")
+                  test "$(echo "$health" | jq -r '.schemaVersion')" = "9"
+                  test "$(echo "$health" | jq -r '.serviceManagement')" = "true"
+                  test "$(echo "$health" | jq -r '.serviceInspections')" = "true"
+                  test "$(echo "$health" | jq -r '.serviceExpenses')" = "true"
+                  test "$(echo "$service" | jq -r '.records | length')" -ge 3
+                  echo "Verified $base/: HTTP 200 + Stage 9 service UI + provider logos + D1 service API"
                   ok=1
                   break
                 fi
               fi
             fi
-            echo "Stage 8 deployment not ready yet (attempt $attempt, HTTP $code)"
+            echo "Stage 9 deployment not ready yet (attempt $attempt, HTTP $code)"
             sleep 5
           done
           test "$ok" -eq 1
