@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - '.deploy-max-tour'
+      - '.github/workflows/deploy-max-tour-shared.yml'
   workflow_dispatch:
 
 permissions:
