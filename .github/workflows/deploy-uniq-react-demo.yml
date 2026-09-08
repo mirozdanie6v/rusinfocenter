@@ -120,3 +120,5 @@ jobs:
             sleep 5
           done
           test "$ok" -eq 1
+
+# Stage 1 React-only deploy trigger: 2026-09-08
