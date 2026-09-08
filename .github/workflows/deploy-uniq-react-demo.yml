@@ -122,3 +122,4 @@ jobs:
           test "$ok" -eq 1
 
 # Stage 1 React-only deploy trigger: 2026-09-08
+# Stage 2 data-model deploy trigger: 2026-09-08
