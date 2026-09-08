@@ -1,4 +1,4 @@
-name: Deploy MAX TOUR to Cloudflare
+name: Provision and deploy MAX TOUR
 
 on:
   push:
@@ -12,23 +12,156 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CF_ZONE_ID: 56fa9423ef85e05559f453af43ec400f
+      CF_ZONE_NAME: viiversion.com
+      TARGET_DOMAIN: max-tour.viiversion.com
+      WORKER_NAME: max-tour-demo
+      D1_NAME: max-tour-demo
     steps:
-      - name: Checkout repository
+      - name: Checkout MAX TOUR source
         uses: actions/checkout@v5
+        with:
+          repository: mirozdanie6v/MAX-TOUR
+          ref: main
+          path: max-tour
 
-      - name: Probe temporary MAX TOUR source bundle
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Verify deployment credentials
         shell: bash
         run: |
           set -euo pipefail
-          url='https://firestorage.ai/ja/f/7BHHEoPT_mIF'
-          curl -L -sS -D /tmp/headers.txt -o /tmp/body "$url"
-          echo '--- headers ---'
-          cat /tmp/headers.txt
-          echo '--- file ---'
-          file /tmp/body
-          echo '--- size ---'
-          wc -c /tmp/body
-          echo '--- discover links/api paths ---'
-          strings /tmp/body | grep -Eo 'https?://[^"<> ]+|/api/[^"<> ]+' | head -n 100 || true
-          echo '--- first bytes ---'
-          head -c 1200 /tmp/body | tr '\n' ' ' || true
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
+          echo 'Cloudflare credentials are available to the deployment runner.'
+
+      - name: Install and verify source
+        working-directory: max-tour
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
+          npm run typecheck
+          npm test
+          npm run build
+
+      - name: Provision or locate D1
+        id: d1
+        shell: bash
+        run: |
+          set -euo pipefail
+          api="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/d1/database"
+          list=$(curl -fsS "$api?name=${D1_NAME}" -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}")
+          db_id=$(echo "$list" | jq -r --arg name "$D1_NAME" '.result[]? | select(.name==$name) | .uuid' | head -n1)
+          if [ -z "$db_id" ] || [ "$db_id" = "null" ]; then
+            echo "Creating D1 database ${D1_NAME}"
+            created=$(curl -fsS "$api" -X POST \
+              -H 'Content-Type: application/json' \
+              -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+              --data "{\"name\":\"${D1_NAME}\",\"primary_location_hint\":\"apac\"}")
+            test "$(echo "$created" | jq -r '.success')" = "true"
+            db_id=$(echo "$created" | jq -r '.result.uuid')
+          else
+            echo "Using existing D1 database ${D1_NAME}"
+          fi
+          test -n "$db_id"
+          test "$db_id" != "null"
+          echo "database_id=$db_id" >> "$GITHUB_OUTPUT"
+          echo "D1 UUID: $db_id"
+
+      - name: Bind production D1 for this deployment
+        working-directory: max-tour
+        env:
+          DB_ID: ${{ steps.d1.outputs.database_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq --arg id "$DB_ID" '.d1_databases[0].database_id=$id | del(.routes)' wrangler.jsonc > /tmp/wrangler.json
+          mv /tmp/wrangler.json wrangler.jsonc
+          jq '.d1_databases' wrangler.jsonc
+
+      - name: Apply D1 migrations
+        working-directory: max-tour
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 migrations apply DB --remote --config wrangler.jsonc
+
+      - name: Seed verified MAX TOUR baseline
+        working-directory: max-tour
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute DB --remote --config wrangler.jsonc --file=seed/verified-max-tour-data.sql --yes
+          npx wrangler d1 execute DB --remote --config wrangler.jsonc --command='SELECT COUNT(*) AS tours FROM tours; SELECT COUNT(*) AS destinations FROM destinations;' --json | tee /tmp/d1-verify.json
+
+      - name: Deploy Worker and React assets
+        working-directory: max-tour
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler deploy --config wrangler.jsonc
+
+      - name: Attach custom domain
+        shell: bash
+        run: |
+          set -euo pipefail
+          response=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains" \
+            -X PUT \
+            -H 'Content-Type: application/json' \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            --data "{\"hostname\":\"${TARGET_DOMAIN}\",\"service\":\"${WORKER_NAME}\",\"zone_id\":\"${CF_ZONE_ID}\",\"zone_name\":\"${CF_ZONE_NAME}\"}")
+          echo "$response" | jq '{success,result:{hostname:.result.hostname,service:.result.service,zone_name:.result.zone_name},errors}'
+          test "$(echo "$response" | jq -r '.success')" = "true"
+          test "$(echo "$response" | jq -r '.result.hostname')" = "$TARGET_DOMAIN"
+          test "$(echo "$response" | jq -r '.result.service')" = "$WORKER_NAME"
+
+      - name: Production smoke and booking acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://${TARGET_DOMAIN}"
+          ready=0
+          for attempt in $(seq 1 30); do
+            code=$(curl -L -sS --connect-timeout 5 --max-time 15 -o /tmp/health.json -w '%{http_code}' "$base/api/health" || true)
+            if [ "$code" = "200" ] && jq -e '.ok == true and .database == "D1"' /tmp/health.json >/dev/null 2>&1; then
+              ready=1
+              break
+            fi
+            echo "Production not ready yet: attempt $attempt, HTTP $code"
+            sleep 5
+          done
+          test "$ready" -eq 1
+          echo 'Production health verified.'
+
+          curl -fsS -c /tmp/a.cookies -b /tmp/a.cookies "$base/api/session" >/tmp/session-a.json
+          quote_payload='{"tourId":"dalat-premium","format":"group","date":"2026-09-12","adults":2,"children":[{"height":112}],"hotel":"Amiana Resort","transferZoneId":"north","participants":[{"fullName":"DEMO Adult One","birthDate":"1990-01-01"},{"fullName":"DEMO Adult Two","birthDate":"1991-01-01"},{"fullName":"DEMO Child","birthDate":"2020-01-01"}],"contact":{"name":"DEMO Client","phone":"+84000000000","telegram":"demo"},"paymentChoice":"deposit","paymentMethod":"card","source":"Telegram"}'
+          curl -fsS -c /tmp/a.cookies -b /tmp/a.cookies -H 'Content-Type: application/json' -X POST "$base/api/booking/quote" --data "$quote_payload" >/tmp/quote.json
+          jq -e '.quote.tourSubtotalMinor==14200 and .quote.transferMinor==2000 and .quote.totalMinor==16200 and .quote.payNowMinor==4860' /tmp/quote.json >/dev/null
+          echo 'Authoritative production quote verified: 142 + 20 = 162; 30% = 48.60.'
+
+          curl -fsS -c /tmp/a.cookies -b /tmp/a.cookies -H 'Content-Type: application/json' -H 'Idempotency-Key: production-smoke-order-v1' -X POST "$base/api/orders" --data "$quote_payload" >/tmp/order.json
+          order_id=$(jq -r '.order.id' /tmp/order.json)
+          test -n "$order_id"
+          test "$order_id" != "null"
+
+          curl -fsS -c /tmp/a.cookies -b /tmp/a.cookies -H 'Content-Type: application/json' -H 'Idempotency-Key: production-smoke-payment-v1' -X POST "$base/api/payments/demo" --data "{\"orderId\":\"${order_id}\"}" >/tmp/payment.json
+          jq -e '.order.paidMinor==4860 and .order.remainingMinor==11340' /tmp/payment.json >/dev/null
+
+          curl -fsS -c /tmp/a.cookies -b /tmp/a.cookies -H 'Content-Type: application/json' -X PATCH "$base/api/manager/orders/${order_id}/status" --data '{"status":"Подтверждено"}' >/tmp/status.json
+          jq -e '.order.status=="Подтверждено"' /tmp/status.json >/dev/null
+
+          curl -fsS -c /tmp/b.cookies -b /tmp/b.cookies "$base/api/session" >/tmp/session-b.json
+          curl -fsS -c /tmp/b.cookies -b /tmp/b.cookies "$base/api/my-trips" >/tmp/trips-b.json
+          jq -e '.items | length == 0' /tmp/trips-b.json >/dev/null
+          echo 'Session isolation verified.'
+
+          curl -fsS -c /tmp/a.cookies -b /tmp/a.cookies -H 'Content-Type: application/json' -X POST "$base/api/demo/reset" --data '{}' >/tmp/reset.json
+          jq -e '.ok==true and .reset==true' /tmp/reset.json >/dev/null
+          echo 'Production booking flow verified and smoke session reset.'
