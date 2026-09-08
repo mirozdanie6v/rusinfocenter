@@ -12,19 +12,33 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: Probe temporary source bundle
+      - name: Discover temporary source bundle download endpoint
         shell: bash
         run: |
           set -euo pipefail
-          url='https://firestorage.ai/ja/f/7BHHEoPT_mIF'
-          curl -L -sS -D /tmp/headers.txt -o /tmp/body "$url"
-          echo '--- headers ---'
-          cat /tmp/headers.txt
-          echo '--- file ---'
-          file /tmp/body
-          echo '--- size ---'
-          wc -c /tmp/body
-          echo '--- discover links/api paths ---'
-          strings /tmp/body | grep -Eo 'https?://[^"<> ]+|/api/[^"<> ]+' | head -n 80 || true
-          echo '--- first bytes ---'
-          head -c 800 /tmp/body | tr '\n' ' ' || true
+          origin='https://firestorage.ai'
+          url="$origin/ja/f/7BHHEoPT_mIF"
+          curl -L -sS -o /tmp/body "$url"
+          echo '--- page hints ---'
+          python3 - <<'PY'
+          import re
+          s=open('/tmp/body',encoding='utf-8').read()
+          for pat in ['download','max-tour','tar.gz','EmA30Ft4JXLHX5Fj','7BHHEoPT_mIF','api','presign','signed']:
+              print('\nPATTERN',pat)
+              for m in list(re.finditer(pat,s,re.I))[:15]:
+                  print(s[max(0,m.start()-180):m.start()+500].replace('\n',' ')[:700])
+          print('\nSCRIPTS')
+          for x in re.findall(r'<script[^>]+src="([^"]+)"',s): print(x)
+          PY
+          echo '--- script endpoint hints ---'
+          python3 - <<'PY' >/tmp/scripts
+          import re
+          s=open('/tmp/body',encoding='utf-8').read()
+          print('\n'.join(dict.fromkeys(re.findall(r'<script[^>]+src="([^"]+)"',s))))
+          PY
+          while IFS= read -r src; do
+            [ -n "$src" ] || continue
+            curl -L -sS "$origin$src" -o /tmp/js || continue
+            echo "SCRIPT $src"
+            strings /tmp/js | grep -Eo '.{0,100}(download|presign|signed|/api/|shareId|publicId|files).{0,200}' | head -n 25 || true
+          done </tmp/scripts
