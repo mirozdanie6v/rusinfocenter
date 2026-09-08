@@ -1,0 +1,122 @@
+name: Deploy UNIQ React demo to VIIVERSION Cloudflare
+
+on:
+  push:
+    branches:
+      - ops/deploy-uniq-smart-rent-copy
+    paths:
+      - '.github/workflows/deploy-uniq-react-demo.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout operations branch
+        uses: actions/checkout@v5
+
+      - name: Checkout UNIQ React migration branch
+        uses: actions/checkout@v5
+        with:
+          repository: mirozdanie6v/uniq-smart-rent
+          ref: refactor/react-typescript-vite-demo
+          path: uniq-smart-rent
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Install and verify migration build
+        working-directory: uniq-smart-rent
+        run: |
+          set -euo pipefail
+          npm install
+          npm run check
+
+      - name: Ensure isolated demo D1 database
+        working-directory: uniq-smart-rent
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          list=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/d1/database?name=uniq-smart-rent-demo-db&per_page=100" \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}")
+          test "$(echo "$list" | jq -r '.success')" = "true"
+          db_id=$(echo "$list" | jq -r '.result[0].uuid // empty')
+          if [ -z "$db_id" ]; then
+            created=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/d1/database" \
+              -X POST \
+              -H 'Content-Type: application/json' \
+              -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+              --data '{"name":"uniq-smart-rent-demo-db","primary_location_hint":"apac"}')
+            test "$(echo "$created" | jq -r '.success')" = "true"
+            db_id=$(echo "$created" | jq -r '.result.uuid')
+          fi
+          test -n "$db_id"
+          cat > wrangler-demo.jsonc <<EOF
+          {
+            "\$schema":"./node_modules/wrangler/config-schema.json",
+            "name":"uniq-smart-rent-demo",
+            "main":"src/worker.ts",
+            "compatibility_date":"2026-08-25",
+            "workers_dev":true,
+            "assets":{"directory":"./dist","binding":"ASSETS","not_found_handling":"single-page-application","run_worker_first":["/api/*"]},
+            "d1_databases":[{"binding":"DB","database_name":"uniq-smart-rent-demo-db","database_id":"${db_id}","migrations_dir":"migrations"}],
+            "observability":{"enabled":true}
+          }
+          EOF
+          echo "Demo D1 ready: $db_id"
+
+      - name: Apply demo D1 migrations
+        working-directory: uniq-smart-rent
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler d1 migrations apply uniq-smart-rent-demo-db --remote --config wrangler-demo.jsonc
+
+      - name: Deploy isolated demo Worker
+        working-directory: uniq-smart-rent
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler deploy --config wrangler-demo.jsonc
+
+      - name: Attach demo custom domain
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          response=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains" \
+            -X PUT \
+            -H 'Content-Type: application/json' \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            --data '{"hostname":"uniq-smart-rent-demo.viiversion.com","service":"uniq-smart-rent-demo","zone_id":"56fa9423ef85e05559f453af43ec400f","zone_name":"viiversion.com"}')
+          echo "$response" | jq '{success, result: {hostname: .result.hostname, service: .result.service, zone_name: .result.zone_name}, errors}'
+          test "$(echo "$response" | jq -r '.success')" = "true"
+          test "$(echo "$response" | jq -r '.result.hostname')" = "uniq-smart-rent-demo.viiversion.com"
+
+      - name: Verify demo domain
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='https://uniq-smart-rent-demo.viiversion.com'
+          ok=0
+          for attempt in $(seq 1 24); do
+            code=$(curl -L -sS --connect-timeout 5 --max-time 15 -o /tmp/uniq-demo.html -w '%{http_code}' "$base/" || true)
+            if [ "$code" = "200" ] && grep -q 'UNIQ Smart Rent' /tmp/uniq-demo.html; then
+              echo "Verified $base/: HTTP 200"
+              ok=1
+              break
+            fi
+            echo "Demo domain not ready yet (attempt $attempt, HTTP $code)"
+            sleep 5
+          done
+          test "$ok" -eq 1
