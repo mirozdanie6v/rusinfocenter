@@ -62,7 +62,7 @@ jobs:
           test -n "$db_id"
           cat > wrangler-copy.jsonc <<EOF
           {
-            "$schema":"./node_modules/wrangler/config-schema.json",
+            "\$schema":"./node_modules/wrangler/config-schema.json",
             "name":"uniq-smart-rent",
             "main":"src/worker.ts",
             "compatibility_date":"2026-08-25",
