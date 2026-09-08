@@ -12,33 +12,20 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: Discover temporary source bundle download endpoint
+      - name: Inspect temporary bundle download implementation
         shell: bash
         run: |
           set -euo pipefail
           origin='https://firestorage.ai'
-          url="$origin/ja/f/7BHHEoPT_mIF"
-          curl -L -sS -o /tmp/body "$url"
-          echo '--- page hints ---'
+          chunk='/_next/static/chunks/4899-d89df949f2dbd5af.js'
+          curl -L -sS "$origin$chunk" -o /tmp/js
           python3 - <<'PY'
           import re
-          s=open('/tmp/body',encoding='utf-8').read()
-          for pat in ['download','max-tour','tar.gz','EmA30Ft4JXLHX5Fj','7BHHEoPT_mIF','api','presign','signed']:
-              print('\nPATTERN',pat)
-              for m in list(re.finditer(pat,s,re.I))[:15]:
-                  print(s[max(0,m.start()-180):m.start()+500].replace('\n',' ')[:700])
-          print('\nSCRIPTS')
-          for x in re.findall(r'<script[^>]+src="([^"]+)"',s): print(x)
+          s=open('/tmp/js',encoding='utf-8').read()
+          for pat in ['downloadUrl','download-url','/download','objects/','files/','shareId','publicId','fetch(','gT)(']:
+              print('\n===== PATTERN',pat,'=====')
+              matches=list(re.finditer(re.escape(pat),s,re.I))
+              print('COUNT',len(matches))
+              for m in matches[:30]:
+                  print(s[max(0,m.start()-500):m.start()+1000].replace('\n',' ')[:1500])
           PY
-          echo '--- script endpoint hints ---'
-          python3 - <<'PY' >/tmp/scripts
-          import re
-          s=open('/tmp/body',encoding='utf-8').read()
-          print('\n'.join(dict.fromkeys(re.findall(r'<script[^>]+src="([^"]+)"',s))))
-          PY
-          while IFS= read -r src; do
-            [ -n "$src" ] || continue
-            curl -L -sS "$origin$src" -o /tmp/js || continue
-            echo "SCRIPT $src"
-            strings /tmp/js | grep -Eo '.{0,100}(download|presign|signed|/api/|shareId|publicId|files).{0,200}' | head -n 25 || true
-          done </tmp/scripts
