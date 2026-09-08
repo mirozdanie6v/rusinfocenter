@@ -1,0 +1,43 @@
+name: Verify UNIQ Stage 9 production
+
+on:
+  push:
+    branches:
+      - ops/deploy-uniq-smart-rent-copy
+    paths:
+      - '.github/workflows/verify-uniq-stage9.yml'
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify Stage 9 production
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='https://uniq-smart-rent.viiversion.com'
+          for attempt in $(seq 1 24); do
+            code=$(curl -L -sS --connect-timeout 5 --max-time 15 -o /tmp/home.html -w '%{http_code}' "$base/" || true)
+            if [ "$code" = "200" ]; then
+              asset=$(grep -oE 'src="[^"]*assets/index-[^"]+\.js"' /tmp/home.html | head -1 | cut -d'"' -f2 || true)
+              if [ -n "$asset" ]; then
+                curl -fsSL "$base$asset" -o /tmp/app.js
+                health=$(curl -fsSL "$base/api/health" || true)
+                service=$(curl -fsSL -H 'x-uniq-demo-role: owner' "$base/api/owner/service" || true)
+                if grep -q 'ТО, ремонт и осмотры' /tmp/app.js && grep -q 'provider-logo' /tmp/app.js \
+                  && [ "$(echo "$health" | jq -r '.schemaVersion // 0')" = "9" ] \
+                  && [ "$(echo "$health" | jq -r '.serviceManagement // false')" = "true" ] \
+                  && [ "$(echo "$health" | jq -r '.serviceInspections // false')" = "true" ] \
+                  && [ "$(echo "$health" | jq -r '.serviceExpenses // false')" = "true" ] \
+                  && [ "$(echo "$service" | jq -r '.records | length' 2>/dev/null || echo 0)" -ge 3 ]; then
+                    echo "Stage 9 production verified: HTTP 200, logos, service UI, schema 9, D1 service records"
+                    exit 0
+                fi
+              fi
+            fi
+            echo "Not ready yet, attempt $attempt"
+            sleep 5
+          done
+          echo 'Stage 9 production verification failed'
+          exit 1
