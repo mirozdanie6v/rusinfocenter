@@ -18,11 +18,11 @@ jobs:
       - name: Checkout operations branch
         uses: actions/checkout@v5
 
-      - name: Checkout current UNIQ Smart Rent
+      - name: Checkout current UNIQ Smart Rent Stage 6
         uses: actions/checkout@v5
         with:
           repository: mirozdanie6v/uniq-smart-rent
-          ref: main
+          ref: refactor/react-typescript-vite-demo
           path: uniq-smart-rent
 
       - name: Setup Node.js
@@ -105,7 +105,7 @@ jobs:
           test "$(echo "$response" | jq -r '.result.hostname')" = "uniq-smart-rent.viiversion.com"
           test "$(echo "$response" | jq -r '.result.service')" = "uniq-smart-rent"
 
-      - name: Verify custom domain
+      - name: Verify custom domain and Stage 6 bundle
         shell: bash
         run: |
           set -euo pipefail
@@ -114,11 +114,17 @@ jobs:
           for attempt in $(seq 1 24); do
             code=$(curl -L -sS --connect-timeout 5 --max-time 15 -o /tmp/uniq-home.html -w '%{http_code}' "$base/" || true)
             if [ "$code" = "200" ] && grep -q 'UNIQ Smart Rent' /tmp/uniq-home.html; then
-              echo "Verified $base/: HTTP 200"
-              ok=1
-              break
+              asset=$(grep -oE 'src="[^"]*assets/index-[^"]+\.js"' /tmp/uniq-home.html | head -1 | cut -d'"' -f2 || true)
+              if [ -n "$asset" ]; then
+                curl -fsSL "$base$asset" -o /tmp/uniq-app.js
+                if grep -q 'Клиентская база UNIQ' /tmp/uniq-app.js; then
+                  echo "Verified $base/: HTTP 200 + Stage 6 CRM bundle"
+                  ok=1
+                  break
+                fi
+              fi
             fi
-            echo "Domain not ready yet (attempt $attempt, HTTP $code)"
+            echo "Stage 6 deployment not ready yet (attempt $attempt, HTTP $code)"
             sleep 5
           done
           test "$ok" -eq 1
