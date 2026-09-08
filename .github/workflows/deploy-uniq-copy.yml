@@ -18,7 +18,7 @@ jobs:
       - name: Checkout operations branch
         uses: actions/checkout@v5
 
-      - name: Checkout current UNIQ Smart Rent Stage 9
+      - name: Checkout current UNIQ Smart Rent Stage 10
         uses: actions/checkout@v5
         with:
           repository: mirozdanie6v/uniq-smart-rent
@@ -95,7 +95,7 @@ jobs:
           test "$(echo "$response" | jq -r '.result.hostname')" = "uniq-smart-rent.viiversion.com"
           test "$(echo "$response" | jq -r '.result.service')" = "uniq-smart-rent"
 
-      - name: Verify custom domain and Stage 9
+      - name: Verify custom domain and Stage 10
         shell: bash
         run: |
           set -euo pipefail
@@ -105,23 +105,27 @@ jobs:
             code=$(curl -L -sS --connect-timeout 5 --max-time 15 -o /tmp/uniq-home.html -w '%{http_code}' "$base/" || true)
             if [ "$code" = "200" ] && grep -q 'UNIQ Smart Rent' /tmp/uniq-home.html; then
               asset=$(grep -oE 'src="[^"]*assets/index-[^"]+\.js"' /tmp/uniq-home.html | head -1 | cut -d'"' -f2 || true)
-              if [ -n "$asset" ]; then
+              css=$(grep -oE 'href="[^"]*assets/index-[^"]+\.css"' /tmp/uniq-home.html | head -1 | cut -d'"' -f2 || true)
+              if [ -n "$asset" ] && [ -n "$css" ]; then
                 curl -fsSL "$base$asset" -o /tmp/uniq-app.js
-                if grep -q 'ТО, ремонт и осмотры' /tmp/uniq-app.js && grep -q 'provider-logo' /tmp/uniq-app.js; then
+                curl -fsSL "$base$css" -o /tmp/uniq-app.css
+                if grep -q 'Возвращайте клиентов и заполняйте свободный парк' /tmp/uniq-app.js && grep -q 'request-payment' /tmp/uniq-app.css; then
                   health=$(curl -fsSL "$base/api/health")
-                  service=$(curl -fsSL -H 'x-uniq-demo-role: owner' "$base/api/owner/service")
-                  test "$(echo "$health" | jq -r '.schemaVersion')" = "9"
-                  test "$(echo "$health" | jq -r '.serviceManagement')" = "true"
-                  test "$(echo "$health" | jq -r '.serviceInspections')" = "true"
-                  test "$(echo "$health" | jq -r '.serviceExpenses')" = "true"
-                  test "$(echo "$service" | jq -r '.records | length')" -ge 3
-                  echo "Verified $base/: HTTP 200 + Stage 9 service UI + provider logos + D1 service API"
+                  marketing=$(curl -fsSL -H 'x-uniq-demo-role: owner' "$base/api/owner/marketing")
+                  test "$(echo "$health" | jq -r '.schemaVersion')" = "10"
+                  test "$(echo "$health" | jq -r '.marketingCampaigns')" = "true"
+                  test "$(echo "$health" | jq -r '.promotionsMarketing')" = "true"
+                  test "$(echo "$health" | jq -r '.marketingSegments')" = "true"
+                  test "$(echo "$marketing" | jq -r '.persisted')" = "true"
+                  test "$(echo "$marketing" | jq -r '.promotions | length')" -ge 3
+                  test "$(echo "$marketing" | jq -r '.campaigns | length')" -ge 3
+                  echo "Verified $base/: HTTP 200 + Stage 10 Marketing + request payment spacing + D1 marketing API"
                   ok=1
                   break
                 fi
               fi
             fi
-            echo "Stage 9 deployment not ready yet (attempt $attempt, HTTP $code)"
+            echo "Stage 10 deployment not ready yet (attempt $attempt, HTTP $code)"
             sleep 5
           done
           test "$ok" -eq 1
