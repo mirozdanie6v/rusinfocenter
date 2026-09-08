@@ -169,3 +169,4 @@ jobs:
 # Stage 1 React-only deploy trigger: 2026-09-08
 # Stage 2 data-model deploy trigger: 2026-09-08
 # Stage 3 owner fleet CRUD deploy trigger: 2026-09-08
+# Stage 3 retry after D1 runtime bootstrap removal: 2026-09-08T22:17+07:00
