@@ -1,0 +1,30 @@
+name: MAX TOUR bundle probe
+
+on:
+  push:
+    branches: [max-tour-deploy]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe temporary source bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          url='https://firestorage.ai/ja/f/7BHHEoPT_mIF'
+          curl -L -sS -D /tmp/headers.txt -o /tmp/body "$url"
+          echo '--- headers ---'
+          cat /tmp/headers.txt
+          echo '--- file ---'
+          file /tmp/body
+          echo '--- size ---'
+          wc -c /tmp/body
+          echo '--- discover links/api paths ---'
+          strings /tmp/body | grep -Eo 'https?://[^"<> ]+|/api/[^"<> ]+' | head -n 80 || true
+          echo '--- first bytes ---'
+          head -c 800 /tmp/body | tr '\n' ' ' || true
