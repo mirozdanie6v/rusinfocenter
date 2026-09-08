@@ -18,7 +18,7 @@ jobs:
       - name: Checkout operations branch
         uses: actions/checkout@v5
 
-      - name: Checkout current UNIQ Smart Rent Stage 7
+      - name: Checkout current UNIQ Smart Rent Stage 8
         uses: actions/checkout@v5
         with:
           repository: mirozdanie6v/uniq-smart-rent
@@ -106,7 +106,7 @@ jobs:
           test "$(echo "$response" | jq -r '.result.hostname')" = "uniq-smart-rent.viiversion.com"
           test "$(echo "$response" | jq -r '.result.service')" = "uniq-smart-rent"
 
-      - name: Verify custom domain and Stage 7
+      - name: Verify custom domain and Stage 8
         shell: bash
         run: |
           set -euo pipefail
@@ -118,21 +118,24 @@ jobs:
               asset=$(grep -oE 'src="[^"]*assets/index-[^"]+\.js"' /tmp/uniq-home.html | head -1 | cut -d'"' -f2 || true)
               if [ -n "$asset" ]; then
                 curl -fsSL "$base$asset" -o /tmp/uniq-app.js
-                if grep -q 'Две точки — одна система' /tmp/uniq-app.js && grep -q 'Календарь' /tmp/uniq-app.js; then
+                if grep -q 'Деньги бизнеса — в одном экране' /tmp/uniq-app.js && grep -q 'Все движения денег' /tmp/uniq-app.js; then
                   health=$(curl -fsSL "$base/api/health")
-                  team=$(curl -fsSL -H 'x-uniq-demo-role: owner' "$base/api/owner/team")
-                  test "$(echo "$health" | jq -r '.schemaVersion')" = "7"
-                  test "$(echo "$health" | jq -r '.employeesBranches')" = "true"
-                  test "$(echo "$health" | jq -r '.vehicleTransfers')" = "true"
-                  test "$(echo "$team" | jq -r '.branches | length')" = "2"
-                  test "$(echo "$team" | jq -r '.employees | length')" -ge 5
-                  echo "Verified $base/: HTTP 200 + Stage 7 UI + D1 team API"
+                  finance=$(curl -fsSL -H 'x-uniq-demo-role: owner' "$base/api/owner/finance?period=7d&branch=all")
+                  test "$(echo "$health" | jq -r '.schemaVersion')" = "8"
+                  test "$(echo "$health" | jq -r '.ownerFinance')" = "true"
+                  test "$(echo "$health" | jq -r '.refunds')" = "true"
+                  test "$(echo "$health" | jq -r '.deposits')" = "true"
+                  test "$(echo "$finance" | jq -r '.branches | length')" = "2"
+                  test "$(echo "$finance" | jq -r '.transactions | length')" -ge 8
+                  test "$(echo "$finance" | jq -r '.summary.grossPaymentsVnd')" -gt 0
+                  test "$(echo "$finance" | jq -r '.summary.depositsHeldVnd')" -gt 0
+                  echo "Verified $base/: HTTP 200 + Stage 8 finance UI + D1 finance API"
                   ok=1
                   break
                 fi
               fi
             fi
-            echo "Stage 7 deployment not ready yet (attempt $attempt, HTTP $code)"
+            echo "Stage 8 deployment not ready yet (attempt $attempt, HTTP $code)"
             sleep 5
           done
           test "$ok" -eq 1
