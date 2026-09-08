@@ -133,14 +133,20 @@ jobs:
           health_ready=0
           for attempt in $(seq 1 24); do
             code=$(curl -sS --connect-timeout 5 --max-time 15 -o /tmp/uniq-health.json -w '%{http_code}' "$base/api/health" || true)
+            schema='n/a'
             if [ "$code" = "200" ]; then
               health=$(cat /tmp/uniq-health.json)
-              if [ "$(echo "$health" | jq -r '.ok // false')" = "true" ]; then
+              schema=$(echo "$health" | jq -r '.schemaVersion // "n/a"' 2>/dev/null || echo 'n/a')
+              if [ "$(echo "$health" | jq -r '.ok // false')" = "true" ] \
+                && [ "$schema" = "5" ] \
+                && [ "$(echo "$health" | jq -r '.bookingCalendar // false')" = "true" ] \
+                && [ "$(echo "$health" | jq -r '.rentalLifecycle // false')" = "true" ]; then
+                echo "Stage 4 API ready on attempt $attempt"
                 health_ready=1
                 break
               fi
             fi
-            echo "API not ready yet (attempt $attempt, HTTP $code)"
+            echo "Stage 4 API not ready yet (attempt $attempt, HTTP $code, schema=$schema)"
             sleep 5
           done
           test "$health_ready" -eq 1
@@ -200,4 +206,4 @@ jobs:
           echo 'Stage 4 live D1 calendar + availability + extension + issue/return verified on uniq-smart-rent.viiversion.com'
 
 # Primary development domain fixed for Stage 4+: https://uniq-smart-rent.viiversion.com
-# Stage 4 calendar/lifecycle deploy: 2026-09-08
+# Stage 4 propagation-aware live gate: 2026-09-08
