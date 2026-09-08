@@ -66,6 +66,7 @@ jobs:
             "main":"src/worker.ts",
             "compatibility_date":"2026-08-25",
             "workers_dev":true,
+            "vars":{"DEMO_MODE":"true"},
             "assets":{"directory":"./dist","binding":"ASSETS","not_found_handling":"single-page-application","run_worker_first":["/api/*"]},
             "d1_databases":[{"binding":"DB","database_name":"uniq-smart-rent-demo-db","database_id":"${db_id}","migrations_dir":"migrations"}],
             "observability":{"enabled":true}
@@ -121,5 +122,50 @@ jobs:
           done
           test "$ok" -eq 1
 
+      - name: Verify Stage 3 D1 owner fleet CRUD
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='https://uniq-smart-rent-demo.viiversion.com'
+          health=$(curl -fsS "$base/api/health")
+          echo "$health" | jq '{ok,d1Ready,schemaVersion,ownerFleetManagement}'
+          test "$(echo "$health" | jq -r '.ok')" = "true"
+          test "$(echo "$health" | jq -r '.d1Ready')" = "true"
+          test "$(echo "$health" | jq -r '.schemaVersion')" = "4"
+          test "$(echo "$health" | jq -r '.ownerFleetManagement')" = "true"
+
+          id="custom-stage3-smoke-${GITHUB_RUN_ID}"
+          cleanup() {
+            curl -sS -X DELETE "$base/api/owner/fleet/$id" -H 'x-uniq-demo-role: owner' >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          payload=$(jq -nc --arg id "$id" '{id:$id,title:"Stage 3 Smoke Scooter",type:"scooter",brand:"UNIQ",model:"Smoke 125",year:2026,engine:"125 cc",dailyVnd:650000,threeDayVnd:1800000,weeklyVnd:3500000,fourteenDayVnd:6500000,monthlyVnd:12000000,depositVnd:3000000,branchId:"branch-center",status:"ready",published:true,photos:[]}')
+          saved=$(curl -fsS -X POST "$base/api/owner/fleet" \
+            -H 'content-type: application/json' \
+            -H 'x-uniq-demo-role: owner' \
+            --data "$payload")
+          test "$(echo "$saved" | jq -r '.vehicle.id')" = "$id"
+          test "$(echo "$saved" | jq -r '.persisted')" = "true"
+
+          listed=$(curl -fsS "$base/api/fleet-overrides")
+          test "$(echo "$listed" | jq --arg id "$id" 'any(.vehicles[]?; .id == $id)')" = "true"
+
+          archived=$(curl -fsS -X PATCH "$base/api/owner/fleet/$id" \
+            -H 'content-type: application/json' \
+            -H 'x-uniq-demo-role: owner' \
+            --data '{"action":"archive"}')
+          test "$(echo "$archived" | jq -r '.vehicle.published')" = "false"
+          test "$(echo "$archived" | jq -r '.vehicle.archivedAt != null')" = "true"
+
+          removed=$(curl -fsS -X DELETE "$base/api/owner/fleet/$id" -H 'x-uniq-demo-role: owner')
+          test "$(echo "$removed" | jq -r '.removed')" = "true"
+
+          listed_after=$(curl -fsS "$base/api/fleet-overrides")
+          test "$(echo "$listed_after" | jq --arg id "$id" 'any(.vehicles[]?; .id == $id)')" = "false"
+          trap - EXIT
+          echo 'Stage 3 live D1 CRUD verified'
+
 # Stage 1 React-only deploy trigger: 2026-09-08
 # Stage 2 data-model deploy trigger: 2026-09-08
+# Stage 3 owner fleet CRUD deploy trigger: 2026-09-08
