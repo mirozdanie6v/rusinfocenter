@@ -1,4 +1,4 @@
-name: Deploy UNIQ React demo to VIIVERSION Cloudflare
+name: Deploy UNIQ development to VIIVERSION Cloudflare
 
 on:
   push:
@@ -37,7 +37,7 @@ jobs:
           npm install
           npm run check
 
-      - name: Ensure isolated demo D1 database
+      - name: Ensure isolated development D1 database
         working-directory: uniq-smart-rent
         shell: bash
         env:
@@ -72,23 +72,23 @@ jobs:
             "observability":{"enabled":true}
           }
           EOF
-          echo "Demo D1 ready: $db_id"
+          echo "Development D1 ready: $db_id"
 
-      - name: Apply demo D1 migrations
+      - name: Apply development D1 migrations
         working-directory: uniq-smart-rent
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: npx wrangler d1 migrations apply uniq-smart-rent-demo-db --remote --config wrangler-demo.jsonc
 
-      - name: Deploy isolated demo Worker
+      - name: Deploy development Worker
         working-directory: uniq-smart-rent
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: npx wrangler deploy --config wrangler-demo.jsonc
 
-      - name: Attach demo custom domain
+      - name: Attach primary development custom domain
         shell: bash
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -99,34 +99,34 @@ jobs:
             -X PUT \
             -H 'Content-Type: application/json' \
             -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-            --data '{"hostname":"uniq-smart-rent-demo.viiversion.com","service":"uniq-smart-rent-demo","zone_id":"56fa9423ef85e05559f453af43ec400f","zone_name":"viiversion.com"}')
+            --data '{"hostname":"uniq-smart-rent.viiversion.com","service":"uniq-smart-rent-demo","zone_id":"56fa9423ef85e05559f453af43ec400f","zone_name":"viiversion.com"}')
           echo "$response" | jq '{success, result: {hostname: .result.hostname, service: .result.service, zone_name: .result.zone_name}, errors}'
           test "$(echo "$response" | jq -r '.success')" = "true"
-          test "$(echo "$response" | jq -r '.result.hostname')" = "uniq-smart-rent-demo.viiversion.com"
+          test "$(echo "$response" | jq -r '.result.hostname')" = "uniq-smart-rent.viiversion.com"
 
-      - name: Verify demo domain
+      - name: Verify primary development domain
         shell: bash
         run: |
           set -euo pipefail
-          base='https://uniq-smart-rent-demo.viiversion.com'
+          base='https://uniq-smart-rent.viiversion.com'
           ok=0
           for attempt in $(seq 1 24); do
-            code=$(curl -L -sS --connect-timeout 5 --max-time 15 -o /tmp/uniq-demo.html -w '%{http_code}' "$base/" || true)
-            if [ "$code" = "200" ] && grep -q 'UNIQ Smart Rent' /tmp/uniq-demo.html; then
+            code=$(curl -L -sS --connect-timeout 5 --max-time 15 -o /tmp/uniq-development.html -w '%{http_code}' "$base/" || true)
+            if [ "$code" = "200" ] && grep -q 'UNIQ Smart Rent' /tmp/uniq-development.html; then
               echo "Verified $base/: HTTP 200"
               ok=1
               break
             fi
-            echo "Demo domain not ready yet (attempt $attempt, HTTP $code)"
+            echo "Development domain not ready yet (attempt $attempt, HTTP $code)"
             sleep 5
           done
           test "$ok" -eq 1
 
-      - name: Verify Stage 3 D1 owner fleet CRUD
+      - name: Verify Stage 3 D1 owner fleet CRUD on primary domain
         shell: bash
         run: |
           set -euo pipefail
-          base='https://uniq-smart-rent-demo.viiversion.com'
+          base='https://uniq-smart-rent.viiversion.com'
           health=''
           health_ready=0
           for attempt in $(seq 1 24); do
@@ -179,9 +179,6 @@ jobs:
           listed_after=$(curl -fsS "$base/api/fleet-overrides")
           test "$(echo "$listed_after" | jq --arg id "$id" 'any(.vehicles[]?; .id == $id)')" = "false"
           trap - EXIT
-          echo 'Stage 3 live D1 CRUD verified'
+          echo 'Stage 3 live D1 CRUD verified on primary development domain'
 
-# Stage 1 React-only deploy trigger: 2026-09-08
-# Stage 2 data-model deploy trigger: 2026-09-08
-# Stage 3 owner fleet CRUD deploy trigger: 2026-09-08
-# Stage 3 API propagation-aware final gate: 2026-09-08T22:23+07:00
+# Stage 3 promoted to primary development domain: 2026-09-08T23:33+07:00
