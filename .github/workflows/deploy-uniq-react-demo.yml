@@ -127,7 +127,22 @@ jobs:
         run: |
           set -euo pipefail
           base='https://uniq-smart-rent-demo.viiversion.com'
-          health=$(curl -fsS "$base/api/health")
+          health=''
+          health_ready=0
+          for attempt in $(seq 1 24); do
+            code=$(curl -sS --connect-timeout 5 --max-time 15 -o /tmp/uniq-health.json -w '%{http_code}' "$base/api/health" || true)
+            if [ "$code" = "200" ]; then
+              health=$(cat /tmp/uniq-health.json)
+              if [ "$(echo "$health" | jq -r '.ok // false')" = "true" ]; then
+                echo "API ready on attempt $attempt"
+                health_ready=1
+                break
+              fi
+            fi
+            echo "API not ready yet (attempt $attempt, HTTP $code)"
+            sleep 5
+          done
+          test "$health_ready" -eq 1
           echo "$health" | jq '{ok,d1Ready,schemaVersion,ownerFleetManagement}'
           test "$(echo "$health" | jq -r '.ok')" = "true"
           test "$(echo "$health" | jq -r '.d1Ready')" = "true"
@@ -169,4 +184,4 @@ jobs:
 # Stage 1 React-only deploy trigger: 2026-09-08
 # Stage 2 data-model deploy trigger: 2026-09-08
 # Stage 3 owner fleet CRUD deploy trigger: 2026-09-08
-# Stage 3 retry after D1 runtime bootstrap removal: 2026-09-08T22:17+07:00
+# Stage 3 API propagation-aware final gate: 2026-09-08T22:23+07:00
