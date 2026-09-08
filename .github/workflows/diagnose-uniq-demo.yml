@@ -1,0 +1,27 @@
+name: Diagnose UNIQ demo API
+on:
+  push:
+    branches:
+      - ops/deploy-uniq-smart-rent-copy
+    paths:
+      - '.github/workflows/diagnose-uniq-demo.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Inspect API responses
+        shell: bash
+        run: |
+          set -u
+          for base in https://uniq-smart-rent-demo.viiversion.com https://uniq-smart-rent-demo.viiversion.workers.dev; do
+            echo "=== $base/api/health ==="
+            code=$(curl -sS --connect-timeout 10 --max-time 20 -D /tmp/headers -o /tmp/body -w '%{http_code}' "$base/api/health" || true)
+            echo "HTTP=$code"
+            cat /tmp/headers || true
+            echo '--- body ---'
+            cat /tmp/body || true
+            echo
+          done
