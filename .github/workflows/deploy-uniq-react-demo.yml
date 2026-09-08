@@ -81,7 +81,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: npx wrangler d1 migrations apply uniq-smart-rent-demo-db --remote --config wrangler-development.jsonc
 
-      - name: Deploy Stage 4 into uniq-smart-rent Worker
+      - name: Deploy Stage 5 into uniq-smart-rent Worker
         working-directory: uniq-smart-rent
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -120,7 +120,7 @@ jobs:
           done
           test "$ok" -eq 1
 
-      - name: Verify Stage 4 D1 calendar and rental lifecycle
+      - name: Verify Stage 5 D1 payment checkout
         working-directory: uniq-smart-rent
         shell: bash
         env:
@@ -138,72 +138,103 @@ jobs:
               health=$(cat /tmp/uniq-health.json)
               schema=$(echo "$health" | jq -r '.schemaVersion // "n/a"' 2>/dev/null || echo 'n/a')
               if [ "$(echo "$health" | jq -r '.ok // false')" = "true" ] \
-                && [ "$schema" = "5" ] \
+                && [ "$schema" = "6" ] \
+                && [ "$(echo "$health" | jq -r '.ownerFleetManagement // false')" = "true" ] \
                 && [ "$(echo "$health" | jq -r '.bookingCalendar // false')" = "true" ] \
-                && [ "$(echo "$health" | jq -r '.rentalLifecycle // false')" = "true" ]; then
-                echo "Stage 4 API ready on attempt $attempt"
+                && [ "$(echo "$health" | jq -r '.rentalLifecycle // false')" = "true" ] \
+                && [ "$(echo "$health" | jq -r '.paymentCheckout // false')" = "true" ] \
+                && [ "$(echo "$health" | jq -r '.paymentProviders // 0')" = "7" ]; then
+                echo "Stage 5 API ready on attempt $attempt"
                 health_ready=1
                 break
               fi
             fi
-            echo "Stage 4 API not ready yet (attempt $attempt, HTTP $code, schema=$schema)"
+            echo "Stage 5 API not ready yet (attempt $attempt, HTTP $code, schema=$schema)"
             sleep 5
           done
           test "$health_ready" -eq 1
-          echo "$health" | jq '{ok,d1Ready,schemaVersion,ownerFleetManagement,bookingCalendar,rentalLifecycle}'
-          test "$(echo "$health" | jq -r '.schemaVersion')" = "5"
-          test "$(echo "$health" | jq -r '.ownerFleetManagement')" = "true"
-          test "$(echo "$health" | jq -r '.bookingCalendar')" = "true"
-          test "$(echo "$health" | jq -r '.rentalLifecycle')" = "true"
+          echo "$health" | jq '{ok,d1Ready,schemaVersion,ownerFleetManagement,bookingCalendar,rentalLifecycle,paymentCheckout,paymentProviders}'
 
-          vehicle_id="custom-stage4-smoke-${GITHUB_RUN_ID}"
-          contact="stage4-smoke-${GITHUB_RUN_ID}"
-          from=$(date -u -d '+30 days' +%F)
-          to=$(date -u -d '+32 days' +%F)
-          extended_to=$(date -u -d '+35 days' +%F)
-          calendar_to=$(date -u -d '+37 days' +%F)
+          providers=$(curl -fsS "$base/api/payments/providers")
+          test "$(echo "$providers" | jq '.providers | length')" = "7"
+          for provider in vietqr vnpay momo zalopay sbp yookassa tbank; do
+            test "$(echo "$providers" | jq --arg p "$provider" 'any(.providers[]?; .id == $p)')" = "true"
+          done
+
+          vehicle_id="custom-stage5-payment-${GITHUB_RUN_ID}"
+          contact="stage5-payment-${GITHUB_RUN_ID}"
+          from=$(date -u -d '+40 days' +%F)
+          to=$(date -u -d '+43 days' +%F)
+          booking_id=''
+          payment1_id=''
+          payment2_id=''
 
           cleanup() {
             if [ -n "${booking_id:-}" ]; then
-              npx wrangler d1 execute uniq-smart-rent-demo-db --remote --config wrangler-development.jsonc --command "DELETE FROM activity_log WHERE entity_id='${booking_id}'; DELETE FROM booking_extensions WHERE booking_id='${booking_id}'; DELETE FROM booking_status_history WHERE booking_id='${booking_id}'; DELETE FROM bookings WHERE id='${booking_id}'; DELETE FROM customers WHERE contact='${contact}'; DELETE FROM activity_log WHERE entity_id='${vehicle_id}'; DELETE FROM vehicles WHERE id='${vehicle_id}';" >/dev/null 2>&1 || true
+              npx wrangler d1 execute uniq-smart-rent-demo-db --remote --config wrangler-development.jsonc --command "DELETE FROM payment_events WHERE payment_id IN (SELECT id FROM payments WHERE booking_id='${booking_id}'); DELETE FROM transactions WHERE booking_id='${booking_id}'; DELETE FROM payments WHERE booking_id='${booking_id}'; DELETE FROM activity_log WHERE entity_id='${payment1_id}' OR entity_id='${payment2_id}' OR entity_id='${booking_id}'; DELETE FROM booking_extensions WHERE booking_id='${booking_id}'; DELETE FROM booking_status_history WHERE booking_id='${booking_id}'; DELETE FROM rentals WHERE booking_id='${booking_id}'; DELETE FROM bookings WHERE id='${booking_id}'; DELETE FROM customers WHERE contact='${contact}'; DELETE FROM activity_log WHERE entity_id='${vehicle_id}'; DELETE FROM vehicles WHERE id='${vehicle_id}';" >/dev/null 2>&1 || true
+            else
+              npx wrangler d1 execute uniq-smart-rent-demo-db --remote --config wrangler-development.jsonc --command "DELETE FROM customers WHERE contact='${contact}'; DELETE FROM activity_log WHERE entity_id='${vehicle_id}'; DELETE FROM vehicles WHERE id='${vehicle_id}';" >/dev/null 2>&1 || true
             fi
           }
           trap cleanup EXIT
 
-          vehicle_payload=$(jq -nc --arg id "$vehicle_id" '{id:$id,title:"Stage 4 Calendar Scooter",type:"scooter",brand:"UNIQ",model:"Calendar 125",year:2026,engine:"125 cc",dailyVnd:600000,threeDayVnd:1650000,weeklyVnd:3300000,fourteenDayVnd:6200000,monthlyVnd:11000000,depositVnd:3000000,branchId:"branch-center",status:"ready",published:true,photos:[]}')
-          curl -fsS -X POST "$base/api/owner/fleet" -H 'content-type: application/json' -H 'x-uniq-demo-role: owner' --data "$vehicle_payload" >/tmp/stage4-vehicle.json
-          test "$(jq -r '.persisted' /tmp/stage4-vehicle.json)" = "true"
+          vehicle_payload=$(jq -nc --arg id "$vehicle_id" '{id:$id,title:"Stage 5 Payment Scooter",type:"scooter",brand:"UNIQ",model:"Payment 125",year:2026,engine:"125 cc",dailyVnd:1000000,threeDayVnd:2800000,weeklyVnd:6000000,fourteenDayVnd:11000000,monthlyVnd:20000000,depositVnd:3000000,branchId:"branch-center",status:"ready",published:true,photos:[]}')
+          vehicle=$(curl -fsS -X POST "$base/api/owner/fleet" -H 'content-type: application/json' -H 'x-uniq-demo-role: owner' --data "$vehicle_payload")
+          test "$(echo "$vehicle" | jq -r '.persisted')" = "true"
 
-          booking_payload=$(jq -nc --arg vehicleId "$vehicle_id" --arg from "$from" --arg to "$to" --arg contact "$contact" '{vehicleId:$vehicleId,from:$from,to:$to,client:"Stage 4 Smoke Rider",contact:$contact,channel:"telegram",deliveryLocation:"branch-center"}')
+          booking_payload=$(jq -nc --arg vehicleId "$vehicle_id" --arg from "$from" --arg to "$to" --arg contact "$contact" '{vehicleId:$vehicleId,from:$from,to:$to,client:"Stage 5 Payment Rider",contact:$contact,channel:"telegram",deliveryLocation:"branch-center"}')
           booking=$(curl -fsS -X POST "$base/api/bookings" -H 'content-type: application/json' --data "$booking_payload")
           booking_id=$(echo "$booking" | jq -r '.bookingId')
+          total=$(echo "$booking" | jq -r '.estimatedTotalVnd')
           test -n "$booking_id"
+          test "$total" -gt 0
           test "$(echo "$booking" | jq -r '.persisted')" = "true"
 
-          curl -fsS -X PATCH "$base/api/bookings/$booking_id/status" -H 'content-type: application/json' -H 'x-uniq-demo-role: owner' --data '{"status":"confirmed"}' >/tmp/stage4-confirmed.json
-          test "$(jq -r '.status' /tmp/stage4-confirmed.json)" = "confirmed"
+          intent1=$(curl -fsS -X POST "$base/api/payments/intents" -H 'content-type: application/json' --data "$(jq -nc --arg bookingId "$booking_id" '{bookingId:$bookingId,provider:"vietqr",prepaymentPercent:30}')")
+          payment1_id=$(echo "$intent1" | jq -r '.payment.id')
+          amount1=$(echo "$intent1" | jq -r '.payment.amountVnd')
+          expected1=$(( (total * 30 + 99) / 100 ))
+          test -n "$payment1_id"
+          test "$amount1" -eq "$expected1"
+          test "$(echo "$intent1" | jq -r '.payment.status')" = "pending"
+          test "$(echo "$intent1" | jq -r '.payment.mode')" = "demo"
+          test -n "$(echo "$intent1" | jq -r '.payment.qrPayload')"
+          test -n "$(echo "$intent1" | jq -r '.payment.paymentReference')"
 
-          calendar=$(curl -fsS "$base/api/owner/calendar?from=$from&to=$calendar_to&type=scooter" -H 'x-uniq-demo-role: owner')
-          test "$(echo "$calendar" | jq --arg id "$booking_id" 'any(.bookings[]?; .id == $id)')" = "true"
+          paid1=$(curl -fsS -X POST "$base/api/payments/$payment1_id/demo-confirm")
+          test "$(echo "$paid1" | jq -r '.status')" = "paid"
+          test "$(echo "$paid1" | jq -r '.bookingPaymentStatus')" = "partially_paid"
+          test "$(echo "$paid1" | jq -r '.bookingPaidVnd')" -eq "$amount1"
 
-          availability=$(curl -fsS "$base/api/availability?vehicleId=$vehicle_id&from=$from&to=$to")
-          test "$(echo "$availability" | jq -r '.requestAllowed')" = "false"
+          idempotent=$(curl -fsS -X POST "$base/api/payments/$payment1_id/demo-confirm")
+          test "$(echo "$idempotent" | jq -r '.status')" = "paid"
+          test "$(echo "$idempotent" | jq -r '.idempotent')" = "true"
 
-          issued=$(curl -fsS -X PATCH "$base/api/bookings/$booking_id/lifecycle" -H 'content-type: application/json' -H 'x-uniq-demo-role: employee' --data '{"action":"issue"}')
-          test "$(echo "$issued" | jq -r '.status')" = "active"
+          intent2=$(curl -fsS -X POST "$base/api/payments/intents" -H 'content-type: application/json' --data "$(jq -nc --arg bookingId "$booking_id" '{bookingId:$bookingId,provider:"momo",prepaymentPercent:100}')")
+          payment2_id=$(echo "$intent2" | jq -r '.payment.id')
+          amount2=$(echo "$intent2" | jq -r '.payment.amountVnd')
+          remainder=$(( total - amount1 ))
+          test -n "$payment2_id"
+          test "$amount2" -eq "$remainder"
+          test "$(echo "$intent2" | jq -r '.payment.provider')" = "momo"
 
-          extension=$(curl -fsS -X PATCH "$base/api/bookings/$booking_id/extend" -H 'content-type: application/json' -H 'x-uniq-demo-role: owner' --data "$(jq -nc --arg newTo "$extended_to" '{newTo:$newTo,note:"Stage 4 smoke extension"}')")
-          test "$(echo "$extension" | jq -r '.persisted')" = "true"
-          test "$(echo "$extension" | jq -r '.additionalDays > 0')" = "true"
+          paid2=$(curl -fsS -X POST "$base/api/payments/$payment2_id/demo-confirm")
+          test "$(echo "$paid2" | jq -r '.bookingPaymentStatus')" = "paid"
+          test "$(echo "$paid2" | jq -r '.bookingPaidVnd')" -eq "$total"
 
-          returned=$(curl -fsS -X PATCH "$base/api/bookings/$booking_id/lifecycle" -H 'content-type: application/json' -H 'x-uniq-demo-role: employee' --data '{"action":"return"}')
-          test "$(echo "$returned" | jq -r '.status')" = "returned"
-          completed=$(curl -fsS -X PATCH "$base/api/bookings/$booking_id/lifecycle" -H 'content-type: application/json' -H 'x-uniq-demo-role: owner' --data '{"action":"complete"}')
-          test "$(echo "$completed" | jq -r '.status')" = "completed"
+          payment_list=$(curl -fsS "$base/api/bookings/$booking_id/payments" -H 'x-uniq-demo-role: owner')
+          test "$(echo "$payment_list" | jq '.payments | length')" -eq 2
+          test "$(echo "$payment_list" | jq '[.payments[] | select(.status=="paid")] | length')" -eq 2
+
+          audit=$(npx wrangler d1 execute uniq-smart-rent-demo-db --remote --config wrangler-development.jsonc --json --command "SELECT (SELECT COUNT(*) FROM transactions WHERE booking_id='${booking_id}' AND type='payment' AND status='completed') AS transactions_count, (SELECT COUNT(*) FROM payment_events WHERE payment_id IN (SELECT id FROM payments WHERE booking_id='${booking_id}')) AS payment_events_count, (SELECT paid_vnd FROM bookings WHERE id='${booking_id}') AS paid_vnd, (SELECT payment_status FROM bookings WHERE id='${booking_id}') AS payment_status;")
+          test "$(echo "$audit" | jq -r '.[0].results[0].transactions_count')" -eq 2
+          test "$(echo "$audit" | jq -r '.[0].results[0].payment_events_count')" -ge 4
+          test "$(echo "$audit" | jq -r '.[0].results[0].paid_vnd')" -eq "$total"
+          test "$(echo "$audit" | jq -r '.[0].results[0].payment_status')" = "paid"
 
           cleanup
           trap - EXIT
-          echo 'Stage 4 live D1 calendar + availability + extension + issue/return verified on uniq-smart-rent.viiversion.com'
+          echo 'Stage 5 live D1 payment flow verified: 30% VietQR + 70% MoMo balance + full payment + audit.'
 
-# Primary development domain fixed for Stage 4+: https://uniq-smart-rent.viiversion.com
-# Stage 4 propagation-aware live gate: 2026-09-08
+# Primary development domain: https://uniq-smart-rent.viiversion.com
+# Stage 5 payment checkout deploy: 2026-09-09
