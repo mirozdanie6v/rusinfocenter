@@ -107,7 +107,7 @@ jobs:
               asset=$(grep -oE 'src="[^"]*assets/index-[^"]+\.js"' /tmp/uniq-home.html | head -1 | cut -d'"' -f2 || true)
               if [ -n "$asset" ]; then
                 curl -fsSL "$base$asset" -o /tmp/uniq-app.js
-                if grep -q 'ТО, ремонт и осмотры' /tmp/uniq-app.js && grep -q 'ProviderLogo' /tmp/uniq-app.js; then
+                if grep -q 'ТО, ремонт и осмотры' /tmp/uniq-app.js && grep -q 'provider-logo' /tmp/uniq-app.js; then
                   health=$(curl -fsSL "$base/api/health")
                   service=$(curl -fsSL -H 'x-uniq-demo-role: owner' "$base/api/owner/service")
                   test "$(echo "$health" | jq -r '.schemaVersion')" = "9"
