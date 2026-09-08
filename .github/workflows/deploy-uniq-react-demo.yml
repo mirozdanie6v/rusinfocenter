@@ -37,7 +37,7 @@ jobs:
           npm install
           npm run check
 
-      - name: Ensure isolated development D1 database
+      - name: Ensure development D1 database
         working-directory: uniq-smart-rent
         shell: bash
         env:
@@ -81,7 +81,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: npx wrangler d1 migrations apply uniq-smart-rent-demo-db --remote --config wrangler-development.jsonc
 
-      - name: Deploy Stage 3 into uniq-smart-rent Worker
+      - name: Deploy Stage 4 into uniq-smart-rent Worker
         working-directory: uniq-smart-rent
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -120,8 +120,12 @@ jobs:
           done
           test "$ok" -eq 1
 
-      - name: Verify Stage 3 D1 owner fleet CRUD on primary domain
+      - name: Verify Stage 4 D1 calendar and rental lifecycle
+        working-directory: uniq-smart-rent
         shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
           base='https://uniq-smart-rent.viiversion.com'
@@ -132,7 +136,6 @@ jobs:
             if [ "$code" = "200" ]; then
               health=$(cat /tmp/uniq-health.json)
               if [ "$(echo "$health" | jq -r '.ok // false')" = "true" ]; then
-                echo "API ready on attempt $attempt"
                 health_ready=1
                 break
               fi
@@ -141,42 +144,60 @@ jobs:
             sleep 5
           done
           test "$health_ready" -eq 1
-          echo "$health" | jq '{ok,d1Ready,schemaVersion,ownerFleetManagement}'
-          test "$(echo "$health" | jq -r '.ok')" = "true"
-          test "$(echo "$health" | jq -r '.d1Ready')" = "true"
-          test "$(echo "$health" | jq -r '.schemaVersion')" = "4"
+          echo "$health" | jq '{ok,d1Ready,schemaVersion,ownerFleetManagement,bookingCalendar,rentalLifecycle}'
+          test "$(echo "$health" | jq -r '.schemaVersion')" = "5"
           test "$(echo "$health" | jq -r '.ownerFleetManagement')" = "true"
+          test "$(echo "$health" | jq -r '.bookingCalendar')" = "true"
+          test "$(echo "$health" | jq -r '.rentalLifecycle')" = "true"
 
-          id="custom-stage3-smoke-${GITHUB_RUN_ID}"
+          vehicle_id="custom-stage4-smoke-${GITHUB_RUN_ID}"
+          contact="stage4-smoke-${GITHUB_RUN_ID}"
+          from=$(date -u -d '+30 days' +%F)
+          to=$(date -u -d '+32 days' +%F)
+          extended_to=$(date -u -d '+35 days' +%F)
+          calendar_to=$(date -u -d '+37 days' +%F)
+
           cleanup() {
-            curl -sS -X DELETE "$base/api/owner/fleet/$id" -H 'x-uniq-demo-role: owner' >/dev/null 2>&1 || true
+            if [ -n "${booking_id:-}" ]; then
+              npx wrangler d1 execute uniq-smart-rent-demo-db --remote --config wrangler-development.jsonc --command "DELETE FROM activity_log WHERE entity_id='${booking_id}'; DELETE FROM booking_extensions WHERE booking_id='${booking_id}'; DELETE FROM booking_status_history WHERE booking_id='${booking_id}'; DELETE FROM bookings WHERE id='${booking_id}'; DELETE FROM customers WHERE contact='${contact}'; DELETE FROM activity_log WHERE entity_id='${vehicle_id}'; DELETE FROM vehicles WHERE id='${vehicle_id}';" >/dev/null 2>&1 || true
+            fi
           }
           trap cleanup EXIT
 
-          payload=$(jq -nc --arg id "$id" '{id:$id,title:"Stage 3 Smoke Scooter",type:"scooter",brand:"UNIQ",model:"Smoke 125",year:2026,engine:"125 cc",dailyVnd:650000,threeDayVnd:1800000,weeklyVnd:3500000,fourteenDayVnd:6500000,monthlyVnd:12000000,depositVnd:3000000,branchId:"branch-center",status:"ready",published:true,photos:[]}')
-          saved=$(curl -fsS -X POST "$base/api/owner/fleet" \
-            -H 'content-type: application/json' \
-            -H 'x-uniq-demo-role: owner' \
-            --data "$payload")
-          test "$(echo "$saved" | jq -r '.vehicle.id')" = "$id"
-          test "$(echo "$saved" | jq -r '.persisted')" = "true"
+          vehicle_payload=$(jq -nc --arg id "$vehicle_id" '{id:$id,title:"Stage 4 Calendar Scooter",type:"scooter",brand:"UNIQ",model:"Calendar 125",year:2026,engine:"125 cc",dailyVnd:600000,threeDayVnd:1650000,weeklyVnd:3300000,fourteenDayVnd:6200000,monthlyVnd:11000000,depositVnd:3000000,branchId:"branch-center",status:"ready",published:true,photos:[]}')
+          curl -fsS -X POST "$base/api/owner/fleet" -H 'content-type: application/json' -H 'x-uniq-demo-role: owner' --data "$vehicle_payload" >/tmp/stage4-vehicle.json
+          test "$(jq -r '.persisted' /tmp/stage4-vehicle.json)" = "true"
 
-          listed=$(curl -fsS "$base/api/fleet-overrides")
-          test "$(echo "$listed" | jq --arg id "$id" 'any(.vehicles[]?; .id == $id)')" = "true"
+          booking_payload=$(jq -nc --arg vehicleId "$vehicle_id" --arg from "$from" --arg to "$to" --arg contact "$contact" '{vehicleId:$vehicleId,from:$from,to:$to,client:"Stage 4 Smoke Rider",contact:$contact,channel:"telegram",deliveryLocation:"branch-center"}')
+          booking=$(curl -fsS -X POST "$base/api/bookings" -H 'content-type: application/json' --data "$booking_payload")
+          booking_id=$(echo "$booking" | jq -r '.bookingId')
+          test -n "$booking_id"
+          test "$(echo "$booking" | jq -r '.persisted')" = "true"
 
-          archived=$(curl -fsS -X PATCH "$base/api/owner/fleet/$id" \
-            -H 'content-type: application/json' \
-            -H 'x-uniq-demo-role: owner' \
-            --data '{"action":"archive"}')
-          test "$(echo "$archived" | jq -r '.vehicle.published')" = "false"
-          test "$(echo "$archived" | jq -r '.vehicle.archivedAt != null')" = "true"
+          curl -fsS -X PATCH "$base/api/bookings/$booking_id/status" -H 'content-type: application/json' -H 'x-uniq-demo-role: owner' --data '{"status":"confirmed"}' >/tmp/stage4-confirmed.json
+          test "$(jq -r '.status' /tmp/stage4-confirmed.json)" = "confirmed"
 
-          removed=$(curl -fsS -X DELETE "$base/api/owner/fleet/$id" -H 'x-uniq-demo-role: owner')
-          test "$(echo "$removed" | jq -r '.removed')" = "true"
+          calendar=$(curl -fsS "$base/api/owner/calendar?from=$from&to=$calendar_to&type=scooter" -H 'x-uniq-demo-role: owner')
+          test "$(echo "$calendar" | jq --arg id "$booking_id" 'any(.bookings[]?; .id == $id)')" = "true"
 
-          listed_after=$(curl -fsS "$base/api/fleet-overrides")
-          test "$(echo "$listed_after" | jq --arg id "$id" 'any(.vehicles[]?; .id == $id)')" = "false"
+          availability=$(curl -fsS "$base/api/availability?vehicleId=$vehicle_id&from=$from&to=$to")
+          test "$(echo "$availability" | jq -r '.requestAllowed')" = "false"
+
+          issued=$(curl -fsS -X PATCH "$base/api/bookings/$booking_id/lifecycle" -H 'content-type: application/json' -H 'x-uniq-demo-role: employee' --data '{"action":"issue"}')
+          test "$(echo "$issued" | jq -r '.status')" = "active"
+
+          extension=$(curl -fsS -X PATCH "$base/api/bookings/$booking_id/extend" -H 'content-type: application/json' -H 'x-uniq-demo-role: owner' --data "$(jq -nc --arg newTo "$extended_to" '{newTo:$newTo,note:"Stage 4 smoke extension"}')")
+          test "$(echo "$extension" | jq -r '.persisted')" = "true"
+          test "$(echo "$extension" | jq -r '.additionalDays > 0')" = "true"
+
+          returned=$(curl -fsS -X PATCH "$base/api/bookings/$booking_id/lifecycle" -H 'content-type: application/json' -H 'x-uniq-demo-role: employee' --data '{"action":"return"}')
+          test "$(echo "$returned" | jq -r '.status')" = "returned"
+          completed=$(curl -fsS -X PATCH "$base/api/bookings/$booking_id/lifecycle" -H 'content-type: application/json' -H 'x-uniq-demo-role: owner' --data '{"action":"complete"}')
+          test "$(echo "$completed" | jq -r '.status')" = "completed"
+
+          cleanup
           trap - EXIT
-          echo 'Stage 3 live D1 CRUD verified on uniq-smart-rent.viiversion.com'
+          echo 'Stage 4 live D1 calendar + availability + extension + issue/return verified on uniq-smart-rent.viiversion.com'
 
 # Primary development domain fixed for Stage 4+: https://uniq-smart-rent.viiversion.com
+# Stage 4 calendar/lifecycle deploy: 2026-09-08
