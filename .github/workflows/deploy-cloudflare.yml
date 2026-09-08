@@ -1,9 +1,9 @@
-name: Deploy RIC to Cloudflare
+name: Deploy MAX TOUR to Cloudflare
 
 on:
   push:
     branches:
-      - main
+      - max-tour-deploy
   workflow_dispatch:
 
 permissions:
@@ -12,89 +12,23 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    env:
-      GH_TOKEN: ${{ github.token }}
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: 22
-
-      - name: Download verified production bundles
+      - name: Probe temporary MAX TOUR source bundle
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p bundles
-          gh release download media-v32 --repo "${{ github.repository }}" --pattern 'assets-*.tar.gz' --dir bundles
-          gh release download source-v33 --repo "${{ github.repository }}" --pattern 'source.tar.gz' --dir bundles
-
-          test "$(stat -c%s bundles/assets-1.tar.gz)" -eq 1566778
-          test "$(stat -c%s bundles/assets-2.tar.gz)" -eq 1535450
-          test "$(stat -c%s bundles/assets-3.tar.gz)" -eq 871227
-          test "$(stat -c%s bundles/assets-4.tar.gz)" -eq 497557
-          test "$(stat -c%s bundles/source.tar.gz)" -eq 96169
-
-          echo '87c721e8c695b3e13e356b8f656ed3e26b6831ca6c16855f196061dc38e96752  bundles/source.tar.gz' | sha256sum -c -
-          gzip -t bundles/source.tar.gz
-          gzip -t bundles/assets-1.tar.gz
-          gzip -t bundles/assets-2.tar.gz
-          gzip -t bundles/assets-3.tar.gz
-          gzip -t bundles/assets-4.tar.gz
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Build
-        run: npm run build
-
-      - name: Deploy Worker and static assets
-        uses: cloudflare/wrangler-action@v4
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: deploy
-
-      - name: Attach custom domain through Workers Domains API
-        shell: bash
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          set -euo pipefail
-          response=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains" \
-            -X PUT \
-            -H 'Content-Type: application/json' \
-            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-            --data '{"hostname":"rusinfocenter.viiversion.com","service":"rusinfocenter","zone_id":"56fa9423ef85e05559f453af43ec400f","zone_name":"viiversion.com"}')
-          echo "$response" | jq '{success, result: {hostname: .result.hostname, service: .result.service, zone_name: .result.zone_name, environment: .result.environment}, errors}'
-          test "$(echo "$response" | jq -r '.success')" = "true"
-          test "$(echo "$response" | jq -r '.result.hostname')" = "rusinfocenter.viiversion.com"
-          test "$(echo "$response" | jq -r '.result.service')" = "rusinfocenter"
-
-      - name: Verify production domain
-        shell: bash
-        run: |
-          set -euo pipefail
-          base='https://rusinfocenter.viiversion.com'
-          ok=0
-          for attempt in $(seq 1 24); do
-            code=$(curl -L -sS --connect-timeout 5 --max-time 15 -o /tmp/ric-home.html -w '%{http_code}' "$base/" || true)
-            if [ "$code" = "200" ] && grep -q 'РИЦ Mini App' /tmp/ric-home.html; then
-              tours_code=$(curl -L -sS --connect-timeout 5 --max-time 15 -o /tmp/ric-tours.html -w '%{http_code}' "$base/tours" || true)
-              if [ "$tours_code" = "200" ] && grep -q 'РИЦ Mini App' /tmp/ric-tours.html; then
-                echo "Verified $base/ and $base/tours: HTTP 200"
-                ok=1
-                break
-              fi
-            fi
-            echo "Domain not ready yet (attempt $attempt, home HTTP $code)"
-            sleep 5
-          done
-          test "$ok" -eq 1
+          url='https://firestorage.ai/ja/f/7BHHEoPT_mIF'
+          curl -L -sS -D /tmp/headers.txt -o /tmp/body "$url"
+          echo '--- headers ---'
+          cat /tmp/headers.txt
+          echo '--- file ---'
+          file /tmp/body
+          echo '--- size ---'
+          wc -c /tmp/body
+          echo '--- discover links/api paths ---'
+          strings /tmp/body | grep -Eo 'https?://[^"<> ]+|/api/[^"<> ]+' | head -n 100 || true
+          echo '--- first bytes ---'
+          head -c 1200 /tmp/body | tr '\n' ' ' || true
