@@ -7,6 +7,8 @@ on:
     paths-ignore:
       - '.deploy-max-tour'
       - '.github/workflows/deploy-max-tour-shared.yml'
+      - '.deploy-uniq-smart-rent'
+      - '.github/workflows/deploy-uniq-smart-rent-shared.yml'
   workflow_dispatch:
 
 permissions:
