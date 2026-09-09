@@ -1,5 +1,5 @@
 UNIQ Smart Rent VIIVERSION production deploy
 Source: mirozdanie6v/uniq-smart-rent@main
 Target: uniq-smart-rent.viiversion.com
-Triggered: 2026-09-09T17:29+07:00
-Reason: deploy Telegram SDK + VIIVERSION analytics tracker through authorized VIIVERSION Cloudflare runner
+Triggered: 2026-09-09T17:31+07:00
+Reason: remove runtime foreign_keys pragma from D1 bootstrap and verify full production
