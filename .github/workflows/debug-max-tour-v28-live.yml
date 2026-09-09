@@ -1,27 +1,65 @@
-name: Debug MAX TOUR v28 live
+name: Verify MAX TOUR v28 D1 persistence
 
 on:
   push:
     branches: [main]
     paths:
       - '.github/workflows/debug-max-tour-v28-live.yml'
-      - '.debug-max-tour-v28'
 
 permissions:
   contents: read
 
 jobs:
-  inspect:
+  verify-persistence:
     runs-on: ubuntu-latest
     steps:
-      - name: Inspect live endpoints
+      - name: Write and read v28 session data
         run: |
-          set -u
+          set -euo pipefail
           base='https://max-tour-demo.viiversion.com'
-          for path in '/' '/api/health' '/catalog.v28.json' '/api/bootstrap'; do
-            echo "=== $path ==="
-            code=$(curl -L -sS -c /tmp/cookies -b /tmp/cookies -o /tmp/body -w '%{http_code}' "$base$path" || true)
-            echo "HTTP $code"
-            head -c 2000 /tmp/body || true
-            echo
-          done
+          jar=/tmp/v28-cookies
+          curl -L -fsS -c "$jar" -b "$jar" "$base/api/bootstrap" -o /tmp/before.json
+          test "$(jq -r '.ok' /tmp/before.json)" = "true"
+
+          cat > /tmp/payload.json <<'JSON'
+          {
+            "favorites":["dalat-premium"],
+            "travelers":[
+              {"role":"adult","label":"Основной путешественник","fullName":"Persistence Main","birthDate":"1990-01-01","primary":true},
+              {"role":"adult","label":"Попутчик","fullName":"Persistence Companion","birthDate":"1992-02-02","primary":false}
+            ],
+            "bookings":[{
+              "id":"persistence-smoke-v28",
+              "tourId":"dalat-premium",
+              "title":"Далат «Премиум»",
+              "date":"2026-09-20",
+              "time":"05:30",
+              "status":"Подтверждено",
+              "paid":"$30",
+              "rest":"$74",
+              "total":"$104",
+              "type":"group",
+              "receipt":"D1-SMOKE",
+              "paidAt":"2026-09-09",
+              "people":"2 взрослых",
+              "image":"",
+              "rules":"demo",
+              "travelers":[
+                {"role":"adult","label":"Основной путешественник","fullName":"Persistence Main","birthDate":"1990-01-01","primary":true},
+                {"role":"adult","label":"Попутчик","fullName":"Persistence Companion","birthDate":"1992-02-02","primary":false}
+              ]
+            }]
+          }
+          JSON
+
+          curl -L -fsS -c "$jar" -b "$jar" -H 'Content-Type: application/json' --data-binary @/tmp/payload.json "$base/api/bootstrap" -o /tmp/after.json
+          jq -e '.ok == true' /tmp/after.json >/dev/null
+          jq -e 'any(.favorites[]; . == "dalat-premium")' /tmp/after.json >/dev/null
+          jq -e 'any(.travelers[]; .fullName == "Persistence Main" and .birthDate == "1990-01-01" and .primary == true)' /tmp/after.json >/dev/null
+          jq -e 'any(.travelers[]; .fullName == "Persistence Companion" and .birthDate == "1992-02-02" and .primary == false)' /tmp/after.json >/dev/null
+          jq -e 'any(.bookings[]; .id == "persistence-smoke-v28" and .tourId == "dalat-premium")' /tmp/after.json >/dev/null
+
+          curl -L -fsS -c "$jar" -b "$jar" "$base/api/bootstrap" -o /tmp/reload.json
+          jq -e 'any(.bookings[]; .id == "persistence-smoke-v28")' /tmp/reload.json >/dev/null
+          jq -e 'any(.travelers[]; .fullName == "Persistence Main")' /tmp/reload.json >/dev/null
+          echo 'D1 persistence verified: favorite + booking + main traveler + companion survived reload.'
