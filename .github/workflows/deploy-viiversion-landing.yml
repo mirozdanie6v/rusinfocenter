@@ -1,0 +1,48 @@
+name: Deploy VIIVERSION landing analytics
+
+on:
+  push:
+    branches: [main]
+    paths: ['.deploy-viiversion-landing']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          repository: mirozdanie6v/viiversion
+          ref: viiversion
+          path: landing
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Build landing with analytics
+        working-directory: landing
+        run: |
+          set -euo pipefail
+          npm install --ignore-scripts
+          npm run build
+          grep -q 'dashboard.viiversion.com/tracker.js' public/index.html
+      - name: Deploy landing Worker assets
+        working-directory: landing
+        run: npx wrangler deploy
+      - name: Smoke analytics inclusion
+        run: |
+          set -euo pipefail
+          for host in viiversion.com www.viiversion.com; do
+            ready=0
+            for i in $(seq 1 20); do
+              if curl -L -fsS "https://${host}/" -o /tmp/site.html && grep -q 'dashboard.viiversion.com/tracker.js' /tmp/site.html; then ready=1; break; fi
+              sleep 3
+            done
+            test "$ready" -eq 1
+          done
