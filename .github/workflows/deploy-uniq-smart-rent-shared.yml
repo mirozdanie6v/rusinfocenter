@@ -75,6 +75,17 @@ jobs:
           fs.writeFileSync('wrangler.viiversion.jsonc', JSON.stringify(cfg, null, 2) + '\n');
           NODE
 
+      - name: Reconcile existing D1 migration state
+        working-directory: uniq-smart-rent
+        shell: bash
+        run: |
+          set -euo pipefail
+          schema=$(npx wrangler d1 execute uniq-smart-rent-db --remote --config wrangler.viiversion.jsonc --command "PRAGMA table_info(pricing);" --json)
+          if echo "$schema" | jq -e '.[0].results[] | select(.name == "deposit_vnd")' >/dev/null; then
+            echo 'deposit_vnd already exists; recording 0004 in D1 migration history.'
+            npx wrangler d1 execute uniq-smart-rent-db --remote --config wrangler.viiversion.jsonc --command "INSERT OR IGNORE INTO d1_migrations (name) VALUES ('0004_pricing_deposit_vnd.sql'); INSERT OR IGNORE INTO schema_meta (version) VALUES (4);"
+          fi
+
       - name: Apply D1 migrations in VIIVERSION
         working-directory: uniq-smart-rent
         run: npx wrangler d1 migrations apply uniq-smart-rent-db --remote --config wrangler.viiversion.jsonc
