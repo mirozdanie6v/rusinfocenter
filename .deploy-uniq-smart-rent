@@ -1,6 +1,6 @@
 UNIQ Smart Rent VIIVERSION production deploy
 Source: mirozdanie6v/uniq-smart-rent@main
-Source commit: 3a7e64d9ee132c948737fb5add0664b3f4e0ba5a
+Source commit: 25296a38193769832647cccea5d254988e0cd960
 Target: uniq-smart-rent.viiversion.com
-Triggered: 2026-09-09T17:34+07:00
-Reason: use migration-managed D1 schema; runtime bootstrap is read-only; verify full production
+Triggered: 2026-09-09
+Reason: deploy approved client hero, fleet slider, owner CRM polish, ready-to-handover fleet and demo checkout
