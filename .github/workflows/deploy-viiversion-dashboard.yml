@@ -88,7 +88,11 @@ jobs:
           fs.writeFileSync(path,text);
           NODE
           npx wrangler d1 migrations apply DB --remote --config wrangler.jsonc
-          npx wrangler d1 execute DB --remote --config wrangler.jsonc --command="SELECT COUNT(*) AS analytics_table FROM sqlite_master WHERE type='table' AND name='analytics_events';" --json
+          schema=$(npx wrangler d1 execute DB --remote --config wrangler.jsonc --command="SELECT COUNT(*) AS analytics_table FROM sqlite_master WHERE type='table' AND name='analytics_events'; SELECT COUNT(*) AS maintenance_table FROM sqlite_master WHERE type='table' AND name='analytics_maintenance_log'; SELECT COUNT(*) AS detailed_columns FROM pragma_table_info('analytics_events') WHERE name IN ('ip_address','user_agent','country','city','asn','colo','http_protocol','tls_version','browser_platform','viewport','page_url','raw_referrer');" --json)
+          echo "$schema" | jq .
+          test "$(echo "$schema" | jq '[.[].results[]? | select(has("analytics_table")) | .analytics_table][0]')" = "1"
+          test "$(echo "$schema" | jq '[.[].results[]? | select(has("maintenance_table")) | .maintenance_table][0]')" = "1"
+          test "$(echo "$schema" | jq '[.[].results[]? | select(has("detailed_columns")) | .detailed_columns][0]')" = "12"
 
       - name: Deploy Worker and React assets
         working-directory: dashboard
@@ -125,7 +129,7 @@ jobs:
           ready=0
           for attempt in $(seq 1 30); do
             code=$(curl -L -sS --connect-timeout 5 --max-time 15 -o /tmp/health.json -w '%{http_code}' "$base/api/health" || true)
-            if [ "$code" = "200" ] && jq -e '.ok == true and .service == "viiversion-dashboard" and .database == "D1"' /tmp/health.json >/dev/null 2>&1; then ready=1; break; fi
+            if [ "$code" = "200" ] && jq -e '.ok == true and .service == "viiversion-dashboard" and .database == "D1" and .retentionDays == 30' /tmp/health.json >/dev/null 2>&1; then ready=1; break; fi
             sleep 4
           done
           test "$ready" -eq 1
@@ -133,11 +137,18 @@ jobs:
           grep -q 'VIIVERSION Analytics' /tmp/dashboard.html
           curl -L -fsS "$base/tracker.js" -o /tmp/tracker.js
           grep -q '__VIIVERSION_ANALYTICS__' /tmp/tracker.js
+          grep -q 'hardwareConcurrency' /tmp/tracker.js
           status=$(curl -sS -o /tmp/unauth.json -w '%{http_code}' "$base/api/summary")
           test "$status" = "401"
-          payload='{"eventType":"pageview","project":"MAX TOUR","hostname":"max-tour.viiversion.com","path":"/deploy-smoke","title":"Deployment smoke","visitorId":"deploysmokevisitor","sessionId":"deploysmokesession","vvCampaign":"dashboard-deploy-smoke","device":"desktop","occurredAt":"2026-09-09T06:00:00.000Z"}'
-          code=$(curl -sS -o /tmp/collect.json -w '%{http_code}' "$base/api/collect" -X POST -H 'Origin: https://max-tour.viiversion.com' -H 'Content-Type: text/plain;charset=UTF-8' --data "$payload")
+          payload='{"eventType":"pageview","project":"MAX TOUR","hostname":"max-tour.viiversion.com","path":"/deploy-smoke","pageUrl":"https://max-tour.viiversion.com/deploy-smoke?utm_source=deploy&token=must-redact","queryString":"?utm_source=deploy&token=must-redact","title":"Deployment smoke","visitorId":"deploysmokevisitor","sessionId":"deploysmokesession","vvCampaign":"dashboard-deploy-smoke-v2","device":"desktop","browserPlatform":"GitHub Actions","viewport":"1280x720","occurredAt":"2026-09-09T07:00:00.000Z"}'
+          code=$(curl -sS -o /tmp/collect.json -w '%{http_code}' "$base/api/collect" -X POST -H 'Origin: https://max-tour.viiversion.com' -H 'User-Agent: VIIVERSION-Deploy-Smoke/2.0' -H 'Content-Type: text/plain;charset=UTF-8' --data "$payload")
+          cat /tmp/collect.json
           test "$code" = "202"
-          npx wrangler d1 execute DB --remote --config wrangler.jsonc --command="SELECT COUNT(*) AS smoke_events FROM analytics_events WHERE vv_campaign='dashboard-deploy-smoke';" --json | tee /tmp/smoke-db.json
-          test "$(jq '[.[].results[]? | select(has("smoke_events")) | .smoke_events][0]' /tmp/smoke-db.json)" -ge 1
-          echo 'VIIVERSION analytics dashboard production verified.'
+          proof=$(npx wrangler d1 execute DB --remote --config wrangler.jsonc --command="SELECT COUNT(*) AS smoke_events,MAX(ip_address) AS ip,MAX(user_agent) AS ua,MAX(query_string) AS query,MAX(browser_platform) AS platform FROM analytics_events WHERE vv_campaign='dashboard-deploy-smoke-v2';" --json)
+          echo "$proof" | jq .
+          test "$(echo "$proof" | jq '[.[].results[]? | select(has("smoke_events")) | .smoke_events][0]')" -ge 1
+          test "$(echo "$proof" | jq -r '[.[].results[]? | select(has("ua")) | .ua][0]')" = "VIIVERSION-Deploy-Smoke/2.0"
+          test -n "$(echo "$proof" | jq -r '[.[].results[]? | select(has("ip")) | .ip][0]')"
+          test "$(echo "$proof" | jq -r '[.[].results[]? | select(has("platform")) | .platform][0]')" = "GitHub Actions"
+          ! echo "$proof" | grep -q 'must-redact'
+          echo 'VIIVERSION detailed analytics dashboard production verified.'
