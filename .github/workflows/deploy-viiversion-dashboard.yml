@@ -49,6 +49,7 @@ jobs:
         run: |
           set -euo pipefail
           npm install --ignore-scripts
+          npm audit --omit=dev --audit-level=high
           npm run typecheck
           npm test
           npm run build
