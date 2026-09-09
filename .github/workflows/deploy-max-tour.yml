@@ -133,4 +133,23 @@ jobs:
           test "$telegram_code" = "202"
           grep -qi '^access-control-allow-origin: null' /tmp/tg-headers.txt
           jq -e '.ok == true' /tmp/tg-body.json >/dev/null
-          echo 'MAX TOUR Telegram analytics production deployment verified.'
+
+          d1_list=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/d1/database?name=viiversion-analytics&per_page=100" \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}")
+          analytics_uuid=$(echo "$d1_list" | jq -r '.result[]? | select(.name=="viiversion-analytics") | .uuid' | head -n1)
+          test -n "$analytics_uuid"
+          test "$analytics_uuid" != "null"
+          cleanup=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/d1/database/${analytics_uuid}/query" \
+            -X POST \
+            -H 'Content-Type: application/json' \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            --data '{"sql":"DELETE FROM analytics_events WHERE path = ? AND visitor_id = ?","params":["/telegram-production-smoke","tg-production-visitor"]}')
+          echo "$cleanup" | jq '{success,errors}'
+          test "$(echo "$cleanup" | jq -r '.success')" = "true"
+          remaining=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/d1/database/${analytics_uuid}/query" \
+            -X POST \
+            -H 'Content-Type: application/json' \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            --data '{"sql":"SELECT COUNT(*) AS remaining FROM analytics_events WHERE path = ? AND visitor_id = ?","params":["/telegram-production-smoke","tg-production-visitor"]}')
+          test "$(echo "$remaining" | jq -r '.result[0].results[0].remaining')" = "0"
+          echo 'MAX TOUR Telegram analytics production deployment verified; smoke event removed.'
