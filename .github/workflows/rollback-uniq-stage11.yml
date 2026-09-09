@@ -1,0 +1,76 @@
+name: Rollback UNIQ to verified Stage 11
+
+on:
+  push:
+    branches:
+      - ops/deploy-uniq-smart-rent-copy
+    paths:
+      - '.github/workflows/rollback-uniq-stage11.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/checkout@v5
+        with:
+          repository: mirozdanie6v/uniq-smart-rent
+          ref: 6f3ace6a7ebf43d37cf45677891e37aeeceaf902
+          path: uniq-smart-rent
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Verify Stage 11 build
+        working-directory: uniq-smart-rent
+        run: |
+          npm install
+          npm run check
+      - name: Prepare Cloudflare config
+        working-directory: uniq-smart-rent
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          list=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/d1/database?name=uniq-smart-rent-db&per_page=100" -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}")
+          db_id=$(echo "$list" | jq -r '.result[0].uuid // empty')
+          test -n "$db_id"
+          cat > wrangler-rollback.jsonc <<EOF
+          {
+            "name":"uniq-smart-rent",
+            "main":"src/worker.ts",
+            "compatibility_date":"2026-08-25",
+            "workers_dev":true,
+            "assets":{"directory":"./dist","binding":"ASSETS","not_found_handling":"single-page-application","run_worker_first":["/api/*"]},
+            "d1_databases":[{"binding":"DB","database_name":"uniq-smart-rent-db","database_id":"${db_id}","migrations_dir":"migrations"}],
+            "vars":{"DEMO_MODE":"true"},
+            "observability":{"enabled":true}
+          }
+          EOF
+      - name: Deploy verified Stage 11 Worker
+        working-directory: uniq-smart-rent
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler deploy --config wrangler-rollback.jsonc
+      - name: Verify analytics restored
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='https://uniq-smart-rent.viiversion.com'
+          for i in $(seq 1 24); do
+            curl -fsSL "$base/" -o /tmp/home.html || true
+            asset=$(grep -oE 'src="[^"]*assets/index-[^"]+\.js"' /tmp/home.html | head -1 | cut -d'"' -f2 || true)
+            if [ -n "$asset" ]; then
+              curl -fsSL "$base$asset" -o /tmp/app.js || true
+              if grep -q 'Аналитика' /tmp/app.js && grep -q 'Что приносит деньги' /tmp/app.js; then
+                echo 'Stage 11 analytics restored on production'
+                exit 0
+              fi
+            fi
+            sleep 5
+          done
+          exit 1
