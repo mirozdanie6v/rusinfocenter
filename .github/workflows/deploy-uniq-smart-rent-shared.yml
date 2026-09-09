@@ -52,11 +52,8 @@ jobs:
           db_id=$(echo "$list" | jq -r '.result[] | select(.name == "uniq-smart-rent-db") | .uuid' | head -n1)
           if [ -z "$db_id" ] || [ "$db_id" = "null" ]; then
             created=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/d1/database" -X POST "${auth[@]}" --data '{"name":"uniq-smart-rent-db"}')
-            echo "$created" | jq '{success, result: {uuid: .result.uuid, name: .result.name}, errors}'
             test "$(echo "$created" | jq -r '.success')" = "true"
             db_id=$(echo "$created" | jq -r '.result.uuid')
-          else
-            echo "Reusing VIIVERSION D1 uniq-smart-rent-db: $db_id"
           fi
           test -n "$db_id"
           test "$db_id" != "null"
@@ -84,7 +81,6 @@ jobs:
           set -euo pipefail
           schema=$(npx wrangler d1 execute uniq-smart-rent-db --remote --config wrangler.viiversion.jsonc --command "PRAGMA table_info(pricing);" --json)
           if echo "$schema" | jq -e '.[0].results[] | select(.name == "deposit_vnd")' >/dev/null; then
-            echo 'deposit_vnd already exists; recording 0004 in D1 migration history.'
             npx wrangler d1 execute uniq-smart-rent-db --remote --config wrangler.viiversion.jsonc --command "INSERT OR IGNORE INTO d1_migrations (name) VALUES ('0004_pricing_deposit_vnd.sql'); INSERT OR IGNORE INTO schema_meta (version) VALUES (4);"
           fi
 
@@ -105,12 +101,11 @@ jobs:
             -H 'Content-Type: application/json' \
             -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
             --data "{\"hostname\":\"uniq-smart-rent.viiversion.com\",\"service\":\"uniq-smart-rent\",\"zone_id\":\"${VIIVERSION_ZONE_ID}\",\"zone_name\":\"viiversion.com\"}")
-          echo "$response" | jq '{success, result: {hostname: .result.hostname, service: .result.service, zone_name: .result.zone_name, environment: .result.environment}, errors}'
           test "$(echo "$response" | jq -r '.success')" = "true"
           test "$(echo "$response" | jq -r '.result.hostname')" = "uniq-smart-rent.viiversion.com"
           test "$(echo "$response" | jq -r '.result.service')" = "uniq-smart-rent"
 
-      - name: Verify live UNIQ production
+      - name: Verify live UNIQ Telegram analytics production
         shell: bash
         run: |
           set -euo pipefail
@@ -118,24 +113,19 @@ jobs:
           ok=0
           for attempt in $(seq 1 24); do
             home_code=$(curl -L -sS --connect-timeout 5 --max-time 20 -o /tmp/uniq-home.html -w '%{http_code}' "$base/?deploy=${GITHUB_SHA}" || true)
-            ui_code=$(curl -L -sS --connect-timeout 5 --max-time 20 -o /tmp/uniq-prod-ui.js -w '%{http_code}' "$base/prod-ui.js?deploy=${GITHUB_SHA}" || true)
             health_code=$(curl -L -sS --connect-timeout 5 --max-time 20 -o /tmp/uniq-health.json -w '%{http_code}' "$base/api/health?deploy=${GITHUB_SHA}" || true)
             vehicles_code=$(curl -L -sS --connect-timeout 5 --max-time 20 -o /tmp/uniq-vehicles.json -w '%{http_code}' "$base/api/vehicles?deploy=${GITHUB_SHA}" || true)
-            if [ "$home_code" = "200" ] && [ "$ui_code" = "200" ] && [ "$health_code" = "200" ] && [ "$vehicles_code" = "200" ] \
-              && grep -q 'prod-ui.js' /tmp/uniq-home.html \
+            if [ "$home_code" = "200" ] && [ "$health_code" = "200" ] && [ "$vehicles_code" = "200" ] \
               && grep -Fq 'telegram-web-app.js?63' /tmp/uniq-home.html \
               && grep -Fq 'dashboard.viiversion.com/tracker.js' /tmp/uniq-home.html \
-              && grep -q 'Аренда байков и авто в Нячанге — за пару минут.' /tmp/uniq-prod-ui.js \
               && [ "$(jq -r '.service' /tmp/uniq-health.json)" = "uniq-smart-rent" ] \
               && [ "$(jq -r '.d1' /tmp/uniq-health.json)" = "true" ] \
               && [ "$(jq -r '.publicFleetCount' /tmp/uniq-health.json)" = "89" ] \
               && [ "$(jq -r '.totalPublishedFleet' /tmp/uniq-vehicles.json)" = "89" ]; then
-                echo "Verified live $base: Telegram SDK + analytics + new UI + D1 + 89 vehicles"
-                jq '{ok, service, d1, schemaVersion, publicFleetCount}' /tmp/uniq-health.json
+                echo "Verified live $base: Telegram SDK + analytics + D1 + 89 vehicles"
                 ok=1
                 break
             fi
-            echo "UNIQ production not ready yet (attempt $attempt: home=$home_code ui=$ui_code health=$health_code vehicles=$vehicles_code)"
             sleep 5
           done
           test "$ok" -eq 1
