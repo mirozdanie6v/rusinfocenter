@@ -1,0 +1,93 @@
+name: Deploy MAX TOUR to Cloudflare
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.deploy-max-tour'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: max-tour-production-authorized
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Checkout MAX TOUR source
+        uses: actions/checkout@v5
+        with:
+          repository: mirozdanie6v/MAX-TOUR
+          ref: main
+          path: max-tour
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Require Cloudflare credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
+
+      - name: Install and verify MAX TOUR
+        working-directory: max-tour
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+          npm audit --omit=dev --audit-level=high
+          npm run typecheck
+          npm test
+          npm run build
+
+      - name: Apply production D1 migrations and verified seed
+        working-directory: max-tour
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run db:migrate:remote
+          npm run db:seed:remote
+
+      - name: Deploy Worker and assets
+        working-directory: max-tour
+        shell: bash
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs=require('fs');
+          const cfg=JSON.parse(fs.readFileSync('wrangler.jsonc','utf8'));
+          delete cfg.routes;
+          fs.writeFileSync('wrangler.deploy.jsonc',JSON.stringify(cfg,null,2));
+          NODE
+          npx wrangler deploy --config wrangler.deploy.jsonc
+
+      - name: Production smoke test
+        working-directory: max-tour
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='https://max-tour.viiversion.com'
+          ready=0
+          for attempt in $(seq 1 30); do
+            code=$(curl -L -sS --connect-timeout 5 --max-time 15 -o /tmp/home.html -w '%{http_code}' "$base/" || true)
+            if [ "$code" = "200" ] && grep -q 'MAX TOUR' /tmp/home.html; then ready=1; break; fi
+            sleep 4
+          done
+          test "$ready" -eq 1
+          grep -q 'telegram-web-app.js?63' /tmp/home.html
+          grep -q 'dashboard.viiversion.com/tracker.js' /tmp/home.html
+          curl -L -fsS "$base/api/health" -o /tmp/health.json
+          jq -e '.ok == true and .database == "D1"' /tmp/health.json >/dev/null
+          echo 'MAX TOUR Telegram analytics production deployment verified.'
