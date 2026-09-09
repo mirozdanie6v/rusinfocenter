@@ -37,22 +37,51 @@ jobs:
           response=$(curl -fsS "$api?name=${DB_NAME}&per_page=100" -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}")
           uuid=$(echo "$response" | jq -r --arg name "$DB_NAME" '.result[]? | select(.name==$name) | .uuid' | head -n1)
           test -n "$uuid"
-          node - <<'NODE'
-          const fs=require('fs');
-          const p='wrangler.jsonc';
-          const uuid=process.env.DB_UUID;
-          NODE
           sed -i "s/00000000-0000-0000-0000-000000000000/$uuid/" wrangler.jsonc
           echo '--- LAST 60 EVENTS ---'
-          npx wrangler d1 execute DB --remote --config wrangler.jsonc --command="SELECT project,hostname,path,utm_source,utm_medium,browser_platform,user_agent,received_at FROM analytics_events ORDER BY received_at DESC LIMIT 60;" --json | jq '[.[].results[]?]'
+          npx wrangler d1 execute DB --remote --config wrangler.jsonc --command="SELECT project,hostname,path,utm_source,utm_medium,browser_platform,user_agent,telegram_user_id,telegram_username,telegram_verified,received_at FROM analytics_events ORDER BY received_at DESC LIMIT 60;" --json | jq '[.[].results[]?]'
           echo '--- TELEGRAM-LIKE LAST 24H ---'
-          npx wrangler d1 execute DB --remote --config wrangler.jsonc --command="SELECT project,hostname,path,utm_source,utm_medium,browser_platform,user_agent,received_at FROM analytics_events WHERE datetime(received_at) >= datetime('now','-24 hours') AND (lower(utm_source)='telegram' OR lower(browser_platform) LIKE '%telegram%' OR lower(user_agent) LIKE '%telegram%') ORDER BY received_at DESC LIMIT 60;" --json | jq '[.[].results[]?]'
+          npx wrangler d1 execute DB --remote --config wrangler.jsonc --command="SELECT project,hostname,path,utm_source,utm_medium,browser_platform,telegram_user_id,telegram_username,telegram_verification,received_at FROM analytics_events WHERE datetime(received_at) >= datetime('now','-24 hours') AND (lower(utm_source)='telegram' OR telegram_user_id<>'' OR lower(browser_platform) LIKE '%telegram%' OR lower(user_agent) LIKE '%telegram%') ORDER BY received_at DESC LIMIT 60;" --json | jq '[.[].results[]?]'
           echo '--- COUNTS BY PROJECT LAST 24H ---'
-          npx wrangler d1 execute DB --remote --config wrangler.jsonc --command="SELECT project,hostname,COUNT(*) AS events,COUNT(DISTINCT visitor_id) AS visitors,MAX(received_at) AS last_visit FROM analytics_events WHERE datetime(received_at) >= datetime('now','-24 hours') GROUP BY project,hostname ORDER BY last_visit DESC;" --json | jq '[.[].results[]?]'
+          npx wrangler d1 execute DB --remote --config wrangler.jsonc --command="SELECT project,hostname,COUNT(*) AS events,COUNT(DISTINCT visitor_id) AS visitors,COUNT(DISTINCT CASE WHEN telegram_user_id<>'' THEN telegram_user_id END) AS telegram_users,MAX(received_at) AS last_visit FROM analytics_events WHERE datetime(received_at) >= datetime('now','-24 hours') GROUP BY project,hostname ORDER BY last_visit DESC;" --json | jq '[.[].results[]?]'
+          echo '--- TELEGRAM IDENTITY SCHEMA ---'
+          schema=$(npx wrangler d1 execute DB --remote --config wrangler.jsonc --command="SELECT COUNT(*) AS identity_columns FROM pragma_table_info('analytics_events') WHERE name IN ('telegram_user_id','telegram_username','telegram_first_name','telegram_last_name','telegram_language_code','telegram_is_premium','telegram_photo_url','telegram_start_param','telegram_auth_date','telegram_verified','telegram_verification'); SELECT COUNT(*) AS config_table FROM sqlite_master WHERE type='table' AND name='analytics_project_config';" --json)
+          echo "$schema" | jq .
+          test "$(echo "$schema" | jq '[.[].results[]? | select(has("identity_columns")) | .identity_columns][0]')" = "11"
+          test "$(echo "$schema" | jq '[.[].results[]? | select(has("config_table")) | .config_table][0]')" = "1"
+      - name: Production Telegram identity collector proof
+        working-directory: dashboard
+        shell: bash
+        run: |
+          set -euo pipefail
+          api="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/d1/database"
+          response=$(curl -fsS "$api?name=${DB_NAME}&per_page=100" -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}")
+          uuid=$(echo "$response" | jq -r --arg name "$DB_NAME" '.result[]? | select(.name==$name) | .uuid' | head -n1)
+          test -n "$uuid"
+          sed -i "s/00000000-0000-0000-0000-000000000000/$uuid/" wrangler.jsonc || true
+          smoke_path="/production-telegram-identity-smoke"
+          npx wrangler d1 execute DB --remote --config wrangler.jsonc --command="DELETE FROM analytics_events WHERE path='${smoke_path}';" >/dev/null
+          auth_date=$(date +%s)
+          telegram_init_data=$(node -e "const p=new URLSearchParams({auth_date:process.argv[1],start_param:'production-smoke',user:JSON.stringify({id:777000111,first_name:'Production',last_name:'Smoke',username:'vv_prod_smoke',language_code:'ru',is_premium:true,allows_write_to_pm:true})});process.stdout.write(p.toString())" "$auth_date")
+          payload=$(jq -nc --arg init "$telegram_init_data" --arg path "$smoke_path" '{eventType:"pageview",project:"MAX TOUR",hostname:"max-tour.viiversion.com",path:$path,pageUrl:("https://max-tour.viiversion.com"+$path),title:"Telegram identity production smoke",visitorId:"prod-tg-visitor-777000111",sessionId:"prod-tg-session-777000111",utmSource:"telegram",utmMedium:"miniapp",browserPlatform:"Telegram android production-smoke",device:"mobile",telegramInitData:$init,occurredAt:(now|todate)}')
+          code=$(curl -sS -o /tmp/tg-proof.json -w '%{http_code}' https://dashboard.viiversion.com/api/collect -X POST -H 'Origin: null' -H 'User-Agent: Telegram-Android-WebView/production-smoke' -H 'Content-Type: text/plain;charset=UTF-8' --data "$payload")
+          cat /tmp/tg-proof.json
+          test "$code" = "202"
+          proof=$(npx wrangler d1 execute DB --remote --config wrangler.jsonc --command="SELECT telegram_user_id,telegram_username,telegram_first_name,telegram_last_name,telegram_language_code,telegram_is_premium,telegram_start_param,telegram_verified,telegram_verification FROM analytics_events WHERE path='${smoke_path}' ORDER BY received_at DESC LIMIT 1;" --json)
+          echo "$proof" | jq .
+          test "$(echo "$proof" | jq -r '[.[].results[]? | .telegram_user_id][0]')" = "777000111"
+          test "$(echo "$proof" | jq -r '[.[].results[]? | .telegram_username][0]')" = "vv_prod_smoke"
+          test "$(echo "$proof" | jq -r '[.[].results[]? | .telegram_first_name][0]')" = "Production"
+          test "$(echo "$proof" | jq -r '[.[].results[]? | .telegram_start_param][0]')" = "production-smoke"
+          test "$(echo "$proof" | jq -r '[.[].results[]? | .telegram_verification][0]')" = "bot_id_missing"
+          npx wrangler d1 execute DB --remote --config wrangler.jsonc --command="DELETE FROM analytics_events WHERE path='${smoke_path}';" >/dev/null
       - name: Inspect deployed entrypoints
         shell: bash
         run: |
           set -euo pipefail
+          tracker=$(curl -L -fsS --connect-timeout 5 --max-time 20 https://dashboard.viiversion.com/tracker.js)
+          printf '%s' "$tracker" | grep -Fq 'telegramInitData'
+          printf '%s' "$tracker" | grep -Fq 'telegramUserId'
           for url in \
             https://max-tour.viiversion.com/ \
             https://rusinfocenter.viiversion.com/ \
