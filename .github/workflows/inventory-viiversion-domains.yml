@@ -1,0 +1,25 @@
+name: Inventory VIIVERSION domains
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.inventory-viiversion-domains'
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: List Worker custom domains
+        shell: bash
+        run: |
+          set -euo pipefail
+          response=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains" -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}")
+          test "$(echo "$response" | jq -r '.success')" = "true"
+          echo "$response" | jq -r '.result[] | [.hostname,.service,.zone_name] | @tsv' | sort
