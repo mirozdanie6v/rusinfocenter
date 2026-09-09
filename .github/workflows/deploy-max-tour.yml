@@ -21,6 +21,10 @@ jobs:
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CF_ZONE_ID: 56fa9423ef85e05559f453af43ec400f
+      CF_ZONE_NAME: viiversion.com
+      TARGET_DOMAIN: max-tour.viiversion.com
+      WORKER_NAME: max-tour-demo
     steps:
       - name: Checkout MAX TOUR source
         uses: actions/checkout@v5
@@ -51,6 +55,8 @@ jobs:
           npm run typecheck
           npm test
           npm run build
+          grep -Fq 'telegram-web-app.js?63' dist/client/index.html
+          grep -Fq 'dashboard.viiversion.com/tracker.js' dist/client/index.html
 
       - name: Apply production D1 migrations and verified seed
         working-directory: max-tour
@@ -73,21 +79,58 @@ jobs:
           NODE
           npx wrangler deploy --config wrangler.deploy.jsonc
 
-      - name: Production smoke test
+      - name: Attach MAX TOUR custom domain
+        shell: bash
+        run: |
+          set -euo pipefail
+          response=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains" \
+            -X PUT \
+            -H 'Content-Type: application/json' \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            --data "{\"hostname\":\"${TARGET_DOMAIN}\",\"service\":\"${WORKER_NAME}\",\"zone_id\":\"${CF_ZONE_ID}\",\"zone_name\":\"${CF_ZONE_NAME}\"}")
+          echo "$response" | jq '{success,result:{hostname:.result.hostname,service:.result.service},errors}'
+          test "$(echo "$response" | jq -r '.success')" = "true"
+
+      - name: Production smoke and Telegram analytics proof
         working-directory: max-tour
         shell: bash
         run: |
           set -euo pipefail
-          base='https://max-tour.viiversion.com'
+          base="https://${TARGET_DOMAIN}"
           ready=0
           for attempt in $(seq 1 30); do
             code=$(curl -L -sS --connect-timeout 5 --max-time 15 -o /tmp/home.html -w '%{http_code}' "$base/" || true)
             if [ "$code" = "200" ] && grep -q 'MAX TOUR' /tmp/home.html; then ready=1; break; fi
             sleep 4
           done
-          test "$ready" -eq 1
-          grep -q 'telegram-web-app.js?63' /tmp/home.html
-          grep -q 'dashboard.viiversion.com/tracker.js' /tmp/home.html
+          if [ "$ready" -ne 1 ]; then
+            echo 'MAX TOUR custom domain did not become ready'
+            cat /tmp/home.html || true
+            exit 1
+          fi
+          echo '--- production index script references ---'
+          grep -oE '<script[^>]+src="[^"]+"[^>]*>' /tmp/home.html || true
+          grep -Fq 'telegram-web-app.js?63' /tmp/home.html
+          grep -Fq 'dashboard.viiversion.com/tracker.js' /tmp/home.html
           curl -L -fsS "$base/api/health" -o /tmp/health.json
+          cat /tmp/health.json
           jq -e '.ok == true and .database == "D1"' /tmp/health.json >/dev/null
+
+          tracker=$(curl -L -fsS 'https://dashboard.viiversion.com/tracker.js')
+          echo "$tracker" | grep -Fq "storageHandle('localStorage')"
+          echo "$tracker" | grep -Fq 'tgWebAppPlatform'
+
+          telegram_payload='{"eventType":"pageview","project":"MAX TOUR","hostname":"max-tour.viiversion.com","path":"/telegram-production-smoke","pageUrl":"https://max-tour.viiversion.com/telegram-production-smoke","title":"Telegram production smoke","visitorId":"tg-production-visitor","sessionId":"tg-production-session","utmSource":"telegram","utmMedium":"miniapp","device":"mobile","browserPlatform":"Telegram android production-smoke","occurredAt":"2026-09-09T08:00:00.000Z"}'
+          telegram_code=$(curl -sS -D /tmp/tg-headers.txt -o /tmp/tg-body.json -w '%{http_code}' 'https://dashboard.viiversion.com/api/collect' \
+            -X POST \
+            -H 'Origin: null' \
+            -H 'User-Agent: Telegram-Android-WebView/production-smoke' \
+            -H 'Content-Type: text/plain;charset=UTF-8' \
+            --data "$telegram_payload")
+          echo '--- Telegram analytics response ---'
+          cat /tmp/tg-body.json
+          cat /tmp/tg-headers.txt
+          test "$telegram_code" = "202"
+          grep -qi '^access-control-allow-origin: null' /tmp/tg-headers.txt
+          jq -e '.ok == true' /tmp/tg-body.json >/dev/null
           echo 'MAX TOUR Telegram analytics production deployment verified.'
