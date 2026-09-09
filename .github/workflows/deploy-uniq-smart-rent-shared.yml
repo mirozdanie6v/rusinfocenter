@@ -1,0 +1,126 @@
+name: Deploy UNIQ Smart Rent via VIIVERSION
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.deploy-uniq-smart-rent'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      VIIVERSION_ZONE_ID: 56fa9423ef85e05559f453af43ec400f
+
+    steps:
+      - name: Checkout UNIQ Smart Rent
+        uses: actions/checkout@v5
+        with:
+          repository: mirozdanie6v/uniq-smart-rent
+          ref: main
+          path: uniq-smart-rent
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Install, validate and build
+        working-directory: uniq-smart-rent
+        run: |
+          set -euo pipefail
+          npm install
+          npm run check
+
+      - name: Resolve D1 in VIIVERSION account
+        id: d1
+        shell: bash
+        run: |
+          set -euo pipefail
+          auth=(-H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" -H 'Content-Type: application/json')
+          list=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/d1/database?per_page=100" "${auth[@]}")
+          test "$(echo "$list" | jq -r '.success')" = "true"
+          db_id=$(echo "$list" | jq -r '.result[] | select(.name == "uniq-smart-rent-db") | .uuid' | head -n1)
+          if [ -z "$db_id" ] || [ "$db_id" = "null" ]; then
+            created=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/d1/database" -X POST "${auth[@]}" --data '{"name":"uniq-smart-rent-db"}')
+            echo "$created" | jq '{success, result: {uuid: .result.uuid, name: .result.name}, errors}'
+            test "$(echo "$created" | jq -r '.success')" = "true"
+            db_id=$(echo "$created" | jq -r '.result.uuid')
+          else
+            echo "Reusing VIIVERSION D1 uniq-smart-rent-db: $db_id"
+          fi
+          test -n "$db_id"
+          test "$db_id" != "null"
+          echo "database_id=$db_id" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare account-specific Wrangler config
+        working-directory: uniq-smart-rent
+        env:
+          UNIQ_D1_DATABASE_ID: ${{ steps.d1.outputs.database_id }}
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const cfg = JSON.parse(fs.readFileSync('wrangler.jsonc', 'utf8'));
+          if (!Array.isArray(cfg.d1_databases) || !cfg.d1_databases[0]) throw new Error('D1 binding missing');
+          cfg.d1_databases[0].database_id = process.env.UNIQ_D1_DATABASE_ID;
+          delete cfg.routes;
+          fs.writeFileSync('wrangler.viiversion.jsonc', JSON.stringify(cfg, null, 2) + '\n');
+          NODE
+
+      - name: Apply D1 migrations in VIIVERSION
+        working-directory: uniq-smart-rent
+        run: npx wrangler d1 migrations apply uniq-smart-rent-db --remote --config wrangler.viiversion.jsonc
+
+      - name: Deploy UNIQ Worker and assets to VIIVERSION
+        working-directory: uniq-smart-rent
+        run: npx wrangler deploy --config wrangler.viiversion.jsonc
+
+      - name: Attach UNIQ custom domain
+        shell: bash
+        run: |
+          set -euo pipefail
+          response=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains" \
+            -X PUT \
+            -H 'Content-Type: application/json' \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            --data "{\"hostname\":\"uniq-smart-rent.viiversion.com\",\"service\":\"uniq-smart-rent\",\"zone_id\":\"${VIIVERSION_ZONE_ID}\",\"zone_name\":\"viiversion.com\"}")
+          echo "$response" | jq '{success, result: {hostname: .result.hostname, service: .result.service, zone_name: .result.zone_name, environment: .result.environment}, errors}'
+          test "$(echo "$response" | jq -r '.success')" = "true"
+          test "$(echo "$response" | jq -r '.result.hostname')" = "uniq-smart-rent.viiversion.com"
+          test "$(echo "$response" | jq -r '.result.service')" = "uniq-smart-rent"
+
+      - name: Verify live UNIQ production
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='https://uniq-smart-rent.viiversion.com'
+          ok=0
+          for attempt in $(seq 1 24); do
+            home_code=$(curl -L -sS --connect-timeout 5 --max-time 20 -o /tmp/uniq-home.html -w '%{http_code}' "$base/?deploy=${GITHUB_SHA}" || true)
+            ui_code=$(curl -L -sS --connect-timeout 5 --max-time 20 -o /tmp/uniq-prod-ui.js -w '%{http_code}' "$base/prod-ui.js?deploy=${GITHUB_SHA}" || true)
+            health_code=$(curl -L -sS --connect-timeout 5 --max-time 20 -o /tmp/uniq-health.json -w '%{http_code}' "$base/api/health?deploy=${GITHUB_SHA}" || true)
+            vehicles_code=$(curl -L -sS --connect-timeout 5 --max-time 20 -o /tmp/uniq-vehicles.json -w '%{http_code}' "$base/api/vehicles?deploy=${GITHUB_SHA}" || true)
+            if [ "$home_code" = "200" ] && [ "$ui_code" = "200" ] && [ "$health_code" = "200" ] && [ "$vehicles_code" = "200" ] \
+              && grep -q 'prod-ui.js' /tmp/uniq-home.html \
+              && grep -q 'Аренда байков и авто в Нячанге — за пару минут.' /tmp/uniq-prod-ui.js \
+              && [ "$(jq -r '.service' /tmp/uniq-health.json)" = "uniq-smart-rent" ] \
+              && [ "$(jq -r '.d1' /tmp/uniq-health.json)" = "true" ] \
+              && [ "$(jq -r '.publicFleetCount' /tmp/uniq-health.json)" = "89" ] \
+              && [ "$(jq -r '.totalPublishedFleet' /tmp/uniq-vehicles.json)" = "89" ]; then
+                echo "Verified live $base: new UI + D1 + 89 vehicles"
+                jq '{ok, service, d1, schemaVersion, publicFleetCount}' /tmp/uniq-health.json
+                ok=1
+                break
+            fi
+            echo "UNIQ production not ready yet (attempt $attempt: home=$home_code ui=$ui_code health=$health_code vehicles=$vehicles_code)"
+            sleep 5
+          done
+          test "$ok" -eq 1
