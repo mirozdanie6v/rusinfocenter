@@ -1,0 +1,67 @@
+name: Diagnose VIIVERSION analytics
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.diagnose-analytics'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      DB_NAME: viiversion-analytics
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          repository: mirozdanie6v/viiversion
+          ref: dashboard
+          path: dashboard
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Inspect recent production analytics
+        working-directory: dashboard
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --ignore-scripts >/dev/null 2>&1
+          api="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/d1/database"
+          response=$(curl -fsS "$api?name=${DB_NAME}&per_page=100" -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}")
+          uuid=$(echo "$response" | jq -r --arg name "$DB_NAME" '.result[]? | select(.name==$name) | .uuid' | head -n1)
+          test -n "$uuid"
+          node - <<'NODE'
+          const fs=require('fs');
+          const p='wrangler.jsonc';
+          const uuid=process.env.DB_UUID;
+          NODE
+          sed -i "s/00000000-0000-0000-0000-000000000000/$uuid/" wrangler.jsonc
+          echo '--- LAST 60 EVENTS ---'
+          npx wrangler d1 execute DB --remote --config wrangler.jsonc --command="SELECT project,hostname,path,utm_source,utm_medium,browser_platform,user_agent,received_at FROM analytics_events ORDER BY received_at DESC LIMIT 60;" --json | jq '[.[].results[]?]'
+          echo '--- TELEGRAM-LIKE LAST 24H ---'
+          npx wrangler d1 execute DB --remote --config wrangler.jsonc --command="SELECT project,hostname,path,utm_source,utm_medium,browser_platform,user_agent,received_at FROM analytics_events WHERE datetime(received_at) >= datetime('now','-24 hours') AND (lower(utm_source)='telegram' OR lower(browser_platform) LIKE '%telegram%' OR lower(user_agent) LIKE '%telegram%') ORDER BY received_at DESC LIMIT 60;" --json | jq '[.[].results[]?]'
+          echo '--- COUNTS BY PROJECT LAST 24H ---'
+          npx wrangler d1 execute DB --remote --config wrangler.jsonc --command="SELECT project,hostname,COUNT(*) AS events,COUNT(DISTINCT visitor_id) AS visitors,MAX(received_at) AS last_visit FROM analytics_events WHERE datetime(received_at) >= datetime('now','-24 hours') GROUP BY project,hostname ORDER BY last_visit DESC;" --json | jq '[.[].results[]?]'
+      - name: Inspect deployed entrypoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          for url in \
+            https://max-tour.viiversion.com/ \
+            https://rusinfocenter.viiversion.com/ \
+            https://uniq-smart-rent.viiversion.com/ \
+            https://truesurf-app.viiversion.com/ \
+            https://pet-nika.viiversion.com/; do
+            echo "--- $url ---"
+            body=$(curl -L -fsS --connect-timeout 5 --max-time 20 "$url" || true)
+            printf '%s' "$body" | grep -oE '<script[^>]+src="[^"]+"[^>]*>' || true
+            if printf '%s' "$body" | grep -Fq 'dashboard.viiversion.com/tracker.js'; then echo 'tracker=YES'; else echo 'tracker=NO'; fi
+            if printf '%s' "$body" | grep -Fq 'telegram-web-app.js'; then echo 'telegram-sdk=YES'; else echo 'telegram-sdk=NO'; fi
+          done
