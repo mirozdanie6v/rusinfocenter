@@ -1,3 +1,4 @@
-trigger=2026-09-09T21:50:00+07:00
+trigger=2026-09-09T21:53:00+07:00
 source=mirozdanie6v/MAX-TOUR@demo/max-tour-demo
+source_commit=cbacd18e8fcc466001683b6374cb9cc7013d8a1b
 target=https://max-tour-demo.viiversion.com
