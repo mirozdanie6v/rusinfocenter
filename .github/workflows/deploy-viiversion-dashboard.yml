@@ -1,0 +1,143 @@
+name: Deploy VIIVERSION analytics dashboard
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.deploy-viiversion-dashboard'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CF_ZONE_ID: 56fa9423ef85e05559f453af43ec400f
+      CF_ZONE_NAME: viiversion.com
+      TARGET_DOMAIN: dashboard.viiversion.com
+      WORKER_NAME: viiversion-dashboard
+      DB_NAME: viiversion-analytics
+
+    steps:
+      - name: Checkout dashboard source
+        uses: actions/checkout@v5
+        with:
+          repository: mirozdanie6v/viiversion
+          ref: dashboard
+          path: dashboard
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Verify Cloudflare credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
+
+      - name: Install and verify dashboard
+        working-directory: dashboard
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --ignore-scripts
+          npm run typecheck
+          npm test
+          npm run build
+
+      - name: Create or resolve analytics D1
+        id: d1
+        shell: bash
+        run: |
+          set -euo pipefail
+          api="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/d1/database"
+          response=$(curl -fsS "$api?name=${DB_NAME}&per_page=100" -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}")
+          test "$(echo "$response" | jq -r '.success')" = "true"
+          uuid=$(echo "$response" | jq -r --arg name "$DB_NAME" '.result[]? | select(.name==$name) | .uuid' | head -n1)
+          if [ -z "$uuid" ] || [ "$uuid" = "null" ]; then
+            created=$(curl -fsS "$api" -X POST -H 'Content-Type: application/json' -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" --data "{\"name\":\"${DB_NAME}\"}")
+            echo "$created" | jq '{success,result:{name:.result.name,uuid:.result.uuid},errors}'
+            test "$(echo "$created" | jq -r '.success')" = "true"
+            uuid=$(echo "$created" | jq -r '.result.uuid')
+          fi
+          test -n "$uuid"
+          test "$uuid" != "null"
+          echo "uuid=$uuid" >> "$GITHUB_OUTPUT"
+          echo "Resolved D1 ${DB_NAME}: ${uuid}"
+
+      - name: Bind real D1 and apply migrations
+        working-directory: dashboard
+        shell: bash
+        env:
+          DB_UUID: ${{ steps.d1.outputs.uuid }}
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs=require('fs');
+          const path='wrangler.jsonc';
+          const text=fs.readFileSync(path,'utf8').replace('00000000-0000-0000-0000-000000000000',process.env.DB_UUID);
+          if(!text.includes(process.env.DB_UUID)) throw new Error('D1 UUID replacement failed');
+          fs.writeFileSync(path,text);
+          NODE
+          npx wrangler d1 migrations apply DB --remote --config wrangler.jsonc
+          npx wrangler d1 execute DB --remote --config wrangler.jsonc --command="SELECT COUNT(*) AS analytics_table FROM sqlite_master WHERE type='table' AND name='analytics_events';" --json
+
+      - name: Deploy Worker and React assets
+        working-directory: dashboard
+        shell: bash
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs=require('fs');
+          const raw=fs.readFileSync('wrangler.jsonc','utf8');
+          const cfg=JSON.parse(raw);
+          delete cfg.routes;
+          fs.writeFileSync('wrangler.deploy.jsonc',JSON.stringify(cfg,null,2));
+          NODE
+          npx wrangler deploy --config wrangler.deploy.jsonc
+
+      - name: Attach dashboard custom domain
+        shell: bash
+        run: |
+          set -euo pipefail
+          response=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains" \
+            -X PUT \
+            -H 'Content-Type: application/json' \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            --data "{\"hostname\":\"${TARGET_DOMAIN}\",\"service\":\"${WORKER_NAME}\",\"zone_id\":\"${CF_ZONE_ID}\",\"zone_name\":\"${CF_ZONE_NAME}\"}")
+          echo "$response" | jq '{success,result:{hostname:.result.hostname,service:.result.service},errors}'
+          test "$(echo "$response" | jq -r '.success')" = "true"
+
+      - name: Production smoke and collector proof
+        working-directory: dashboard
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://${TARGET_DOMAIN}"
+          ready=0
+          for attempt in $(seq 1 30); do
+            code=$(curl -L -sS --connect-timeout 5 --max-time 15 -o /tmp/health.json -w '%{http_code}' "$base/api/health" || true)
+            if [ "$code" = "200" ] && jq -e '.ok == true and .service == "viiversion-dashboard" and .database == "D1"' /tmp/health.json >/dev/null 2>&1; then ready=1; break; fi
+            sleep 4
+          done
+          test "$ready" -eq 1
+          curl -L -fsS "$base/" -o /tmp/dashboard.html
+          grep -q 'VIIVERSION Analytics' /tmp/dashboard.html
+          curl -L -fsS "$base/tracker.js" -o /tmp/tracker.js
+          grep -q '__VIIVERSION_ANALYTICS__' /tmp/tracker.js
+          status=$(curl -sS -o /tmp/unauth.json -w '%{http_code}' "$base/api/summary")
+          test "$status" = "401"
+          payload='{"eventType":"pageview","project":"MAX TOUR","hostname":"max-tour.viiversion.com","path":"/deploy-smoke","title":"Deployment smoke","visitorId":"deploysmokevisitor","sessionId":"deploysmokesession","vvCampaign":"dashboard-deploy-smoke","device":"desktop","occurredAt":"2026-09-09T06:00:00.000Z"}'
+          code=$(curl -sS -o /tmp/collect.json -w '%{http_code}' "$base/api/collect" -X POST -H 'Origin: https://max-tour.viiversion.com' -H 'Content-Type: text/plain;charset=UTF-8' --data "$payload")
+          test "$code" = "202"
+          npx wrangler d1 execute DB --remote --config wrangler.jsonc --command="SELECT COUNT(*) AS smoke_events FROM analytics_events WHERE vv_campaign='dashboard-deploy-smoke';" --json | tee /tmp/smoke-db.json
+          test "$(jq '[.[].results[]? | select(has("smoke_events")) | .smoke_events][0]' /tmp/smoke-db.json)" -ge 1
+          echo 'VIIVERSION analytics dashboard production verified.'
