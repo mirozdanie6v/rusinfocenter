@@ -1,0 +1,110 @@
+name: Deploy MAX TOUR Standalone v28 via VIIVERSION
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.deploy-max-tour-demo'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      MAX_TOUR_DEMO_DB: max-tour-standalone-v28-db
+      MAX_TOUR_DEMO_SERVICE: max-tour-demo-v28
+      MAX_TOUR_DEMO_HOST: max-tour-demo.viiversion.com
+
+    steps:
+      - name: Checkout standalone v28
+        uses: actions/checkout@v5
+        with:
+          repository: mirozdanie6v/MAX-TOUR
+          ref: demo/max-tour-demo
+          path: max-tour
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Verify and build standalone v28 only
+        working-directory: max-tour/standalone-v28
+        run: |
+          set -euo pipefail
+          npm install --ignore-scripts --no-audit --no-fund --package-lock=false
+          npm test
+          npm run build
+          grep -Fq 'MaxTour Mini App Prototype v28' dist/index.html
+          grep -Fq 'runtime-api.js' dist/index.html
+          test "$(node -e "console.log(JSON.parse(require('fs').readFileSync('dist/catalog.v28.json','utf8')).length)")" = "15"
+
+      - name: Resolve or create isolated D1
+        id: d1
+        working-directory: max-tour/standalone-v28
+        run: |
+          set -euo pipefail
+          printf '%s\n' '{"compatibility_date":"2026-09-09"}' > /tmp/wrangler-empty.jsonc
+          npx wrangler d1 list --json --config /tmp/wrangler-empty.jsonc > /tmp/d1.json
+          db_id=$(jq -r --arg name "$MAX_TOUR_DEMO_DB" '.[] | select(.name == $name) | .uuid' /tmp/d1.json | head -n1)
+          if [ -z "$db_id" ] || [ "$db_id" = "null" ]; then
+            npx wrangler d1 create "$MAX_TOUR_DEMO_DB" --config /tmp/wrangler-empty.jsonc
+            npx wrangler d1 list --json --config /tmp/wrangler-empty.jsonc > /tmp/d1.json
+            db_id=$(jq -r --arg name "$MAX_TOUR_DEMO_DB" '.[] | select(.name == $name) | .uuid' /tmp/d1.json | head -n1)
+          fi
+          test -n "$db_id"
+          test "$db_id" != "null"
+          echo "database_id=$db_id" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare standalone Cloudflare config
+        working-directory: max-tour/standalone-v28
+        env:
+          DEMO_D1_DATABASE_ID: ${{ steps.d1.outputs.database_id }}
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const cfg = JSON.parse(fs.readFileSync('wrangler.jsonc', 'utf8'));
+          cfg.name = process.env.MAX_TOUR_DEMO_SERVICE;
+          cfg.vars = { ...(cfg.vars || {}), APP_ENV: 'demo-v28', APP_URL: `https://${process.env.MAX_TOUR_DEMO_HOST}` };
+          cfg.d1_databases[0].database_name = process.env.MAX_TOUR_DEMO_DB;
+          cfg.d1_databases[0].database_id = process.env.DEMO_D1_DATABASE_ID;
+          delete cfg.routes;
+          fs.writeFileSync('wrangler.viiversion-demo.jsonc', JSON.stringify(cfg, null, 2) + '\n');
+          NODE
+
+      - name: Apply clean standalone migrations
+        working-directory: max-tour/standalone-v28
+        run: npx wrangler d1 migrations apply "$MAX_TOUR_DEMO_DB" --remote --config wrangler.viiversion-demo.jsonc
+
+      - name: Deploy standalone Worker and assets
+        working-directory: max-tour/standalone-v28
+        run: npx wrangler deploy --config wrangler.viiversion-demo.jsonc
+
+      - name: Verify live standalone v28
+        run: |
+          set -euo pipefail
+          base="https://${MAX_TOUR_DEMO_HOST}"
+          jar=/tmp/max-tour-v28-cookies.txt
+          ok=0
+          for attempt in $(seq 1 24); do
+            home=$(curl -L -sS --connect-timeout 5 --max-time 25 -o /tmp/home.html -w '%{http_code}' "$base/?deploy=${GITHUB_SHA}" || true)
+            health=$(curl -L -sS --connect-timeout 5 --max-time 25 -o /tmp/health.json -w '%{http_code}' "$base/api/health?deploy=${GITHUB_SHA}" || true)
+            if [ "$home" = "200" ] && [ "$health" = "200" ] && grep -Fq 'MaxTour Mini App Prototype v28' /tmp/home.html && [ "$(jq -r '.app' /tmp/health.json)" = "max-tour-v28-standalone" ]; then
+              ok=1
+              break
+            fi
+            sleep 5
+          done
+          test "$ok" -eq 1
+          curl -L -fsS "$base/catalog.v28.json" -o /tmp/catalog.json
+          jq -e 'length == 15 and any(.id == "dalat-premium")' /tmp/catalog.json >/dev/null
+          curl -L -fsS -c "$jar" -b "$jar" "$base/api/bootstrap" -o /tmp/bootstrap.json
+          jq -e '.ok == true and (.bookings|type) == "array" and (.travelers|type) == "array" and (.favorites|type) == "array"' /tmp/bootstrap.json >/dev/null
+          echo "Verified live standalone MAX TOUR v28 with isolated D1"
