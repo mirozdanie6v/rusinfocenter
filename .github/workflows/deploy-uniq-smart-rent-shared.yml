@@ -38,6 +38,8 @@ jobs:
           set -euo pipefail
           npm install
           npm run check
+          grep -Fq 'telegram-web-app.js?63' dist/index.html
+          grep -Fq 'dashboard.viiversion.com/tracker.js' dist/index.html
 
       - name: Resolve D1 in VIIVERSION account
         id: d1
@@ -121,12 +123,14 @@ jobs:
             vehicles_code=$(curl -L -sS --connect-timeout 5 --max-time 20 -o /tmp/uniq-vehicles.json -w '%{http_code}' "$base/api/vehicles?deploy=${GITHUB_SHA}" || true)
             if [ "$home_code" = "200" ] && [ "$ui_code" = "200" ] && [ "$health_code" = "200" ] && [ "$vehicles_code" = "200" ] \
               && grep -q 'prod-ui.js' /tmp/uniq-home.html \
+              && grep -Fq 'telegram-web-app.js?63' /tmp/uniq-home.html \
+              && grep -Fq 'dashboard.viiversion.com/tracker.js' /tmp/uniq-home.html \
               && grep -q 'Аренда байков и авто в Нячанге — за пару минут.' /tmp/uniq-prod-ui.js \
               && [ "$(jq -r '.service' /tmp/uniq-health.json)" = "uniq-smart-rent" ] \
               && [ "$(jq -r '.d1' /tmp/uniq-health.json)" = "true" ] \
               && [ "$(jq -r '.publicFleetCount' /tmp/uniq-health.json)" = "89" ] \
               && [ "$(jq -r '.totalPublishedFleet' /tmp/uniq-vehicles.json)" = "89" ]; then
-                echo "Verified live $base: new UI + D1 + 89 vehicles"
+                echo "Verified live $base: Telegram SDK + analytics + new UI + D1 + 89 vehicles"
                 jq '{ok, service, d1, schemaVersion, publicFleetCount}' /tmp/uniq-health.json
                 ok=1
                 break
