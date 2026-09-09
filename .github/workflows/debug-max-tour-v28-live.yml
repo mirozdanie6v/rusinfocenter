@@ -1,0 +1,27 @@
+name: Debug MAX TOUR v28 live
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/debug-max-tour-v28-live.yml'
+      - '.debug-max-tour-v28'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Inspect live endpoints
+        run: |
+          set -u
+          base='https://max-tour-demo.viiversion.com'
+          for path in '/' '/api/health' '/catalog.v28.json' '/api/bootstrap'; do
+            echo "=== $path ==="
+            code=$(curl -L -sS -c /tmp/cookies -b /tmp/cookies -o /tmp/body -w '%{http_code}' "$base$path" || true)
+            echo "HTTP $code"
+            head -c 2000 /tmp/body || true
+            echo
+          done
