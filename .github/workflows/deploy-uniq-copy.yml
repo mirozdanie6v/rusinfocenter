@@ -18,7 +18,7 @@ jobs:
       - name: Checkout operations branch
         uses: actions/checkout@v5
 
-      - name: Checkout current UNIQ Smart Rent Stage 11
+      - name: Checkout current UNIQ Smart Rent Stage 12
         uses: actions/checkout@v5
         with:
           repository: mirozdanie6v/uniq-smart-rent
@@ -76,6 +76,23 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: npx wrangler d1 migrations apply uniq-smart-rent-db --remote --config wrangler-copy.jsonc
 
+      - name: Verify Stage 12 remote D1
+        working-directory: uniq-smart-rent
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          fleet=$(npx wrangler d1 execute uniq-smart-rent-db --remote --config wrangler-copy.jsonc --json --command "SELECT COUNT(*) AS vehicle_count FROM vehicles;")
+          vehicle_count=$(echo "$fleet" | jq -r '.[0].results[0].vehicle_count // 0')
+          echo "Operational D1 fleet: $vehicle_count"
+          test "$vehicle_count" -ge 89
+          settings=$(npx wrangler d1 execute uniq-smart-rent-db --remote --config wrangler-copy.jsonc --json --command "SELECT value_json FROM business_settings WHERE key='stage12_operations' LIMIT 1;")
+          value=$(echo "$settings" | jq -r '.[0].results[0].value_json // empty')
+          echo "$value" | grep -q 'dynamic_branches'
+          echo "$value" | grep -q 'balance_payments'
+
       - name: Deploy UNIQ Worker copy
         working-directory: uniq-smart-rent
         env:
@@ -95,7 +112,7 @@ jobs:
           test "$(echo "$response" | jq -r '.result.hostname')" = "uniq-smart-rent.viiversion.com"
           test "$(echo "$response" | jq -r '.result.service')" = "uniq-smart-rent"
 
-      - name: Verify custom domain and Stage 11
+      - name: Verify custom domain and Stage 12
         shell: bash
         run: |
           set -euo pipefail
@@ -109,27 +126,24 @@ jobs:
               if [ -n "$asset" ] && [ -n "$css" ]; then
                 curl -fsSL "$base$asset" -o /tmp/uniq-app.js
                 curl -fsSL "$base$css" -o /tmp/uniq-app.css
-                if grep -q 'Что приносит деньги' /tmp/uniq-app.js && grep -q 'analytics-page' /tmp/uniq-app.css && grep -q 'Возврат сегодня' /tmp/uniq-app.js; then
+                if grep -q 'Доплатить остаток' /tmp/uniq-app.js && grep -q 'Продлить аренду' /tmp/uniq-app.js && grep -q 'Добавить филиал' /tmp/uniq-app.js && grep -q 'payment-balance-summary' /tmp/uniq-app.css; then
                   health=$(curl -fsSL "$base/api/health")
-                  analytics=$(curl -fsSL -H 'x-uniq-demo-role: owner' "$base/api/owner/analytics?period=7d&branch=all")
-                  test "$(echo "$health" | jq -r '.schemaVersion')" = "11"
-                  test "$(echo "$health" | jq -r '.ownerAnalytics')" = "true"
-                  test "$(echo "$health" | jq -r '.analyticsFunnel')" = "true"
-                  test "$(echo "$health" | jq -r '.vehicleProfitability')" = "true"
-                  test "$(echo "$health" | jq -r '.demoRequestDataset')" = "true"
-                  test "$(echo "$analytics" | jq -r '.persisted')" = "true"
-                  test "$(echo "$analytics" | jq -r '.funnel | length')" -eq 5
-                  test "$(echo "$analytics" | jq -r '.vehicles | length')" -ge 4
-                  test "$(echo "$analytics" | jq -r '.statuses | length')" -ge 6
-                  test "$(echo "$analytics" | jq -r '.kpis.bookings')" -ge 15
-                  test "$(echo "$analytics" | jq -r '[.statuses[] | select(.status == "return_due")] | length')" -ge 1
-                  echo "Verified $base/: HTTP 200 + Stage 11 Analytics + 20 varied DEMO bookings + D1 analytics API"
+                  team=$(curl -fsSL -H 'x-uniq-demo-role: owner' "$base/api/owner/team")
+                  test "$(echo "$health" | jq -r '.schemaVersion')" = "12"
+                  test "$(echo "$health" | jq -r '.dynamicBranches')" = "true"
+                  test "$(echo "$health" | jq -r '.clientBookingExtension')" = "true"
+                  test "$(echo "$health" | jq -r '.balancePayments')" = "true"
+                  test "$(echo "$health" | jq -r '.overpaymentProtection')" = "true"
+                  test "$(echo "$health" | jq -r '.fullOperationalFleet')" = "true"
+                  test "$(echo "$team" | jq -r '.persisted')" = "true"
+                  test "$(echo "$team" | jq -r '.branches | length')" -ge 2
+                  echo "Verified $base/: HTTP 200 + Stage 12 dynamic branches + client extension + balance payments + operational fleet"
                   ok=1
                   break
                 fi
               fi
             fi
-            echo "Stage 11 deployment not ready yet (attempt $attempt, HTTP $code)"
+            echo "Stage 12 deployment not ready yet (attempt $attempt, HTTP $code)"
             sleep 5
           done
           test "$ok" -eq 1
