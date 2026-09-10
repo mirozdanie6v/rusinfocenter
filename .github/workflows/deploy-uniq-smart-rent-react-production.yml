@@ -22,7 +22,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       VIIVERSION_ZONE_ID: 56fa9423ef85e05559f453af43ec400f
-      UNIQ_RELEASE_SHA: 72671d66f5726cb86fd2e3eceb3e881b470ef88e
+      UNIQ_RELEASE_SHA: 3942cc795718e8b1366685d959cd2978910345c5
       UNIQ_DB_NAME: uniq-smart-rent-db
       UNIQ_SERVICE: uniq-smart-rent
       UNIQ_HOSTNAME: uniq-smart-rent.viiversion.com
@@ -52,8 +52,8 @@ jobs:
           grep -Fq -- '--review-line' src/review-polish.css
           grep -Fq 'data-payment-done' src/features/payments/PaymentCheckout.tsx
           grep -Fq 'data-client-tile' src/features/requests/RequestDetailModal.tsx
-          grep -Fq 'Rental history stays inside a bounded window' src/review-polish.css
-          grep -Fq 'overflow-y:auto!important' src/review-polish.css
+          grep -Fq 'tapping a customer row always opens the customer profile' src/review-polish.css
+          grep -Fq 'display:none!important' src/review-polish.css
 
       - name: Resolve production D1 in VIIVERSION account
         id: d1
