@@ -22,7 +22,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       VIIVERSION_ZONE_ID: 56fa9423ef85e05559f453af43ec400f
-      UNIQ_RELEASE_SHA: 3942cc795718e8b1366685d959cd2978910345c5
+      UNIQ_RELEASE_SHA: a4c3100388832f2af07082b4b3da964e02d7e145
       UNIQ_DB_NAME: uniq-smart-rent-db
       UNIQ_SERVICE: uniq-smart-rent
       UNIQ_HOSTNAME: uniq-smart-rent.viiversion.com
@@ -54,6 +54,9 @@ jobs:
           grep -Fq 'data-client-tile' src/features/requests/RequestDetailModal.tsx
           grep -Fq 'tapping a customer row always opens the customer profile' src/review-polish.css
           grep -Fq 'display:none!important' src/review-polish.css
+          grep -Fq 'bounded sheet, never a full-screen page' src/review-polish.css
+          grep -Fq 'max-height:74dvh!important' src/review-polish.css
+          grep -Fq 'position:sticky!important' src/review-polish.css
 
       - name: Resolve production D1 in VIIVERSION account
         id: d1
