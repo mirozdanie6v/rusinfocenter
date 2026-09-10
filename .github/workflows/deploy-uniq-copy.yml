@@ -112,7 +112,7 @@ jobs:
           test "$(echo "$response" | jq -r '.result.hostname')" = "uniq-smart-rent.viiversion.com"
           test "$(echo "$response" | jq -r '.result.service')" = "uniq-smart-rent"
 
-      - name: Verify custom domain and Stage 12
+      - name: Verify custom domain and current UX
         shell: bash
         run: |
           set -euo pipefail
@@ -126,7 +126,14 @@ jobs:
               if [ -n "$asset" ] && [ -n "$css" ]; then
                 curl -fsSL "$base$asset" -o /tmp/uniq-app.js
                 curl -fsSL "$base$css" -o /tmp/uniq-app.css
-                if grep -q 'Доплатить остаток' /tmp/uniq-app.js && grep -q 'Продлить аренду' /tmp/uniq-app.js && grep -q 'Добавить филиал' /tmp/uniq-app.js && grep -q 'payment-balance-summary' /tmp/uniq-app.css; then
+                if grep -q 'Техника для Нячанга — бронь за пару минут' /tmp/uniq-app.js \
+                  && grep -q 'Открыть заявку' /tmp/uniq-app.js \
+                  && grep -q 'КАРТОЧКА КЛИЕНТА' /tmp/uniq-app.js \
+                  && grep -q 'О МОДЕЛИ' /tmp/uniq-app.js \
+                  && grep -q 'vehicle-dossier' /tmp/uniq-app.css \
+                  && grep -q 'request-clickable' /tmp/uniq-app.css \
+                  && ! grep -q 'Связались' /tmp/uniq-app.js \
+                  && ! grep -q 'Подробнее о модели ↗' /tmp/uniq-app.js; then
                   health=$(curl -fsSL "$base/api/health")
                   team=$(curl -fsSL -H 'x-uniq-demo-role: owner' "$base/api/owner/team")
                   test "$(echo "$health" | jq -r '.schemaVersion')" = "12"
@@ -137,13 +144,13 @@ jobs:
                   test "$(echo "$health" | jq -r '.fullOperationalFleet')" = "true"
                   test "$(echo "$team" | jq -r '.persisted')" = "true"
                   test "$(echo "$team" | jq -r '.branches | length')" -ge 2
-                  echo "Verified $base/: HTTP 200 + Stage 12 dynamic branches + client extension + balance payments + operational fleet"
+                  echo "Verified $base/: HTTP 200 + current hero + clickable requests/clients + internal full-fleet model dossier + Stage 12 operations"
                   ok=1
                   break
                 fi
               fi
             fi
-            echo "Stage 12 deployment not ready yet (attempt $attempt, HTTP $code)"
+            echo "Current UX deployment not ready yet (attempt $attempt, HTTP $code)"
             sleep 5
           done
           test "$ok" -eq 1
