@@ -22,7 +22,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       VIIVERSION_ZONE_ID: 56fa9423ef85e05559f453af43ec400f
-      UNIQ_RELEASE_SHA: 3415ad8110d85c33b0e251b835cfd240d25c279b
+      UNIQ_RELEASE_SHA: 5f91a11e67dec0498681336c1fd3c56b3d0f1ace
       UNIQ_DB_NAME: uniq-smart-rent-db
       UNIQ_SERVICE: uniq-smart-rent
       UNIQ_HOSTNAME: uniq-smart-rent.viiversion.com
