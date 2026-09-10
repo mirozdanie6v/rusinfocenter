@@ -25,8 +25,23 @@ jobs:
           jar=/tmp/mt-cookie.txt
           id="action-smoke-${GITHUB_RUN_ID}"
           curl -fsS -c "$jar" -b "$jar" "$BASE/api/bootstrap" >/tmp/bootstrap0.json
-          curl -fsS -c "$jar" -b "$jar" -H 'content-type: application/json' -X POST "$BASE/api/bookings" \
-            --data "{\"id\":\"$id\",\"tourId\":\"dalat-premium\",\"title\":\"Action smoke\",\"date\":\"2026-09-20\",\"time\":\"05:30\",\"status\":\"Депозит внесён\",\"paid\":\"$126\",\"rest\":\"$294\",\"total\":\"$420\",\"type\":\"Индивидуальный\",\"receipt\":\"SMOKE\",\"paidAt\":\"10.09.2026 · 12:00\",\"people\":\"1 человек\",\"travelers\":[]}" >/tmp/create.json
+
+          jq -n \
+            --arg id "$id" \
+            --arg tourId 'dalat-premium' \
+            --arg title 'Action smoke' \
+            --arg date '2026-09-20' \
+            --arg time '05:30' \
+            --arg status 'Депозит внесён' \
+            --arg paid '$126' \
+            --arg rest '$294' \
+            --arg total '$420' \
+            --arg type 'Индивидуальный' \
+            --arg receipt 'SMOKE' \
+            --arg paidAt '10.09.2026 · 12:00' \
+            --arg people '1 человек' \
+            '{id:$id,tourId:$tourId,title:$title,date:$date,time:$time,status:$status,paid:$paid,rest:$rest,total:$total,type:$type,receipt:$receipt,paidAt:$paidAt,people:$people,travelers:[]}' >/tmp/create-payload.json
+          curl -fsS -c "$jar" -b "$jar" -H 'content-type: application/json' -X POST "$BASE/api/bookings" --data-binary @/tmp/create-payload.json >/tmp/create.json
           jq -e '.ok == true' /tmp/create.json >/dev/null
 
           curl -fsS -c "$jar" -b "$jar" -H 'content-type: application/json' -X PATCH "$BASE/api/bookings/$id" \
