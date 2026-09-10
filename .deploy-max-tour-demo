@@ -1,5 +1,5 @@
-trigger=2026-09-10T15:53:00+07:00
+trigger=2026-09-10T16:07:00+07:00
 source=mirozdanie6v/MAX-TOUR@demo/max-tour-demo
-source_commit=3078694899574e320096746ec7aa58a798c801db
-mode=standalone-v28-hero-cta-beach-anchor
+source_commit=31e113c4bd1843a142ce5df8bd1c127a46d155a4
+mode=standalone-v28-hero-cta-shoreline
 target=https://max-tour-demo.viiversion.com
