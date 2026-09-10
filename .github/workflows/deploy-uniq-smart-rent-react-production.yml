@@ -22,7 +22,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       VIIVERSION_ZONE_ID: 56fa9423ef85e05559f453af43ec400f
-      UNIQ_RELEASE_SHA: 5f91a11e67dec0498681336c1fd3c56b3d0f1ace
+      UNIQ_RELEASE_SHA: e122f8a2c7c9dc44d7049fa172af4c143a0472cb
       UNIQ_DB_NAME: uniq-smart-rent-db
       UNIQ_SERVICE: uniq-smart-rent
       UNIQ_HOSTNAME: uniq-smart-rent.viiversion.com
@@ -50,6 +50,8 @@ jobs:
           grep -Fq 'dashboard.viiversion.com/tracker.js' dist/index.html
           grep -Fq 'telegramAutofilled' src/integrations/telegram/contactAutofill.ts
           grep -Fq -- '--review-line' src/review-polish.css
+          grep -Fq 'data-payment-done' src/features/payments/PaymentCheckout.tsx
+          grep -Fq 'data-client-tile' src/features/requests/RequestDetailModal.tsx
 
       - name: Resolve production D1 in VIIVERSION account
         id: d1
@@ -78,7 +80,7 @@ jobs:
           cfg.d1_databases[0].database_name = process.env.UNIQ_DB_NAME;
           cfg.d1_databases[0].database_id = process.env.UNIQ_D1_DATABASE_ID;
           delete cfg.routes;
-          delete cfg.vars?.DEMO_MODE;
+          cfg.vars = { ...(cfg.vars || {}), DEMO_MODE: 'true' };
           fs.writeFileSync('wrangler.viiversion-production.jsonc', JSON.stringify(cfg, null, 2) + '\n');
           NODE
 
@@ -123,13 +125,15 @@ jobs:
             home_code=$(curl -L -sS --connect-timeout 5 --max-time 20 -o /tmp/uniq-home.html -w '%{http_code}' "$base/?deploy=${GITHUB_SHA}" || true)
             health_code=$(curl -L -sS --connect-timeout 5 --max-time 20 -o /tmp/uniq-health.json -w '%{http_code}' "$base/api/health?deploy=${GITHUB_SHA}" || true)
             vehicles_code=$(curl -L -sS --connect-timeout 5 --max-time 20 -o /tmp/uniq-vehicles.json -w '%{http_code}' "$base/api/vehicles?deploy=${GITHUB_SHA}" || true)
-            if [ "$home_code" = "200" ] && [ "$health_code" = "200" ] && [ "$vehicles_code" = "200" ] \
+            providers_code=$(curl -L -sS --connect-timeout 5 --max-time 20 -o /tmp/uniq-providers.json -w '%{http_code}' "$base/api/payments/providers?deploy=${GITHUB_SHA}" || true)
+            if [ "$home_code" = "200" ] && [ "$health_code" = "200" ] && [ "$vehicles_code" = "200" ] && [ "$providers_code" = "200" ] \
               && grep -Fq 'telegram-web-app.js?63' /tmp/uniq-home.html \
               && grep -Fq 'dashboard.viiversion.com/tracker.js' /tmp/uniq-home.html \
               && [ "$(jq -r '.service' /tmp/uniq-health.json)" = "uniq-smart-rent" ] \
               && [ "$(jq -r '.d1' /tmp/uniq-health.json)" = "true" ] \
-              && [ "$(jq -r '.totalPublishedFleet' /tmp/uniq-vehicles.json)" = "89" ]; then
-              echo "Verified live $base: approved React UI + Telegram SDK + analytics + D1 + 89 vehicles"
+              && [ "$(jq -r '.totalPublishedFleet' /tmp/uniq-vehicles.json)" = "89" ] \
+              && [ "$(jq -r '[.providers[] | select(.checkoutMode == "demo")] | length' /tmp/uniq-providers.json)" -ge 1 ]; then
+              echo "Verified live $base: React UI + Telegram + D1 + 89 vehicles + test payment mode"
               ok=1
               break
             fi
