@@ -1,0 +1,48 @@
+name: Verify MAX TOUR trip actions
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-max-tour-trip-actions.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      DB_NAME: max-tour-standalone-v28-db
+      BASE: https://max-tour-demo.viiversion.com
+    steps:
+      - name: Exercise live reschedule and cancel API
+        run: |
+          set -euo pipefail
+          jar=/tmp/mt-cookie.txt
+          id="action-smoke-${GITHUB_RUN_ID}"
+          curl -fsS -c "$jar" -b "$jar" "$BASE/api/bootstrap" >/tmp/bootstrap0.json
+          curl -fsS -c "$jar" -b "$jar" -H 'content-type: application/json' -X POST "$BASE/api/bookings" \
+            --data "{\"id\":\"$id\",\"tourId\":\"dalat-premium\",\"title\":\"Action smoke\",\"date\":\"2026-09-20\",\"time\":\"05:30\",\"status\":\"Депозит внесён\",\"paid\":\"$126\",\"rest\":\"$294\",\"total\":\"$420\",\"type\":\"Индивидуальный\",\"receipt\":\"SMOKE\",\"paidAt\":\"10.09.2026 · 12:00\",\"people\":\"1 человек\",\"travelers\":[]}" >/tmp/create.json
+          jq -e '.ok == true' /tmp/create.json >/dev/null
+
+          curl -fsS -c "$jar" -b "$jar" -H 'content-type: application/json' -X PATCH "$BASE/api/bookings/$id" \
+            --data '{"date":"2026-09-25","time":"06:00","status":"Перенесено","rescheduleHistory":[{"fromDate":"2026-09-20","toDate":"2026-09-25","fee":"$0"}]}' >/tmp/move.json
+          jq -e '.ok == true and .booking.date == "2026-09-25" and .booking.time == "06:00" and .booking.status == "Перенесено"' /tmp/move.json >/dev/null
+          curl -fsS -c "$jar" -b "$jar" "$BASE/api/bootstrap" >/tmp/bootstrap1.json
+          jq -e --arg id "$id" 'any(.bookings[]; .id == $id and .date == "2026-09-25" and .time == "06:00" and .status == "Перенесено")' /tmp/bootstrap1.json >/dev/null
+
+          curl -fsS -c "$jar" -b "$jar" -H 'content-type: application/json' -X PATCH "$BASE/api/bookings/$id" \
+            --data '{"status":"Отменено","rest":"$0","cancellation":{"rate":0,"retained":"$0","refund":"$126"}}' >/tmp/cancel.json
+          jq -e '.ok == true and .booking.status == "Отменено" and .booking.rest == "$0" and .booking.cancellation.refund == "$126"' /tmp/cancel.json >/dev/null
+          curl -fsS -c "$jar" -b "$jar" "$BASE/api/bootstrap" >/tmp/bootstrap2.json
+          jq -e --arg id "$id" 'any(.bookings[]; .id == $id and .status == "Отменено" and .rest == "$0" and .cancellation.refund == "$126")' /tmp/bootstrap2.json >/dev/null
+
+          sid=$(awk '$6=="mt_v28_sid"{print $7}' "$jar" | tail -n1)
+          test -n "$sid"
+          printf '%s\n' '{"compatibility_date":"2026-09-09"}' >/tmp/wrangler-empty.jsonc
+          npx --yes wrangler@4.40.0 d1 execute "$DB_NAME" --remote --config /tmp/wrangler-empty.jsonc --command "DELETE FROM sessions WHERE id='$sid'" >/tmp/cleanup.txt
+          echo "Verified live reschedule + cancel persistence and cleaned smoke session."
