@@ -1,0 +1,37 @@
+name: Diagnose UNIQ production live
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.diagnose-uniq-production'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe custom domain and Worker origin
+        shell: bash
+        run: |
+          set -u
+          for base in 'https://uniq-smart-rent.viiversion.com' 'https://uniq-smart-rent.viiversion.workers.dev'; do
+            echo "=== $base ==="
+            for path in '/' '/api/health' '/api/vehicles'; do
+              out="/tmp/out-$(echo "$base$path" | tr '/:.' '_')"
+              code=$(curl -L -sS --connect-timeout 5 --max-time 20 -o "$out" -w '%{http_code}' "${base}${path}?diag=${GITHUB_SHA}" || true)
+              echo "$path HTTP=$code"
+              if [ "$path" = '/' ]; then
+                echo "telegram_sdk=$(grep -Fc 'telegram-web-app.js?63' "$out" 2>/dev/null || true) tracker=$(grep -Fc 'dashboard.viiversion.com/tracker.js' "$out" 2>/dev/null || true) react_root=$(grep -Fc 'id=\"root\"' "$out" 2>/dev/null || true) legacy_app=$(grep -Fc 'id=\"app\"' "$out" 2>/dev/null || true)"
+                head -c 500 "$out" 2>/dev/null || true
+                echo
+              else
+                cat "$out" 2>/dev/null || true
+                echo
+              fi
+            done
+          done
