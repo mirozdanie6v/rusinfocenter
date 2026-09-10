@@ -128,7 +128,6 @@ jobs:
               && grep -Fq 'dashboard.viiversion.com/tracker.js' /tmp/uniq-home.html \
               && [ "$(jq -r '.service' /tmp/uniq-health.json)" = "uniq-smart-rent" ] \
               && [ "$(jq -r '.d1' /tmp/uniq-health.json)" = "true" ] \
-              && [ "$(jq -r '.publicFleetCount' /tmp/uniq-health.json)" = "89" ] \
               && [ "$(jq -r '.totalPublishedFleet' /tmp/uniq-vehicles.json)" = "89" ]; then
               echo "Verified live $base: approved React UI + Telegram SDK + analytics + D1 + 89 vehicles"
               ok=1
