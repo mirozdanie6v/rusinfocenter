@@ -1,0 +1,139 @@
+name: Deploy approved UNIQ React build to production
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.deploy-uniq-react-production'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: uniq-smart-rent-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      VIIVERSION_ZONE_ID: 56fa9423ef85e05559f453af43ec400f
+      UNIQ_RELEASE_SHA: 3415ad8110d85c33b0e251b835cfd240d25c279b
+      UNIQ_DB_NAME: uniq-smart-rent-db
+      UNIQ_SERVICE: uniq-smart-rent
+      UNIQ_HOSTNAME: uniq-smart-rent.viiversion.com
+
+    steps:
+      - name: Checkout approved UNIQ React release
+        uses: actions/checkout@v5
+        with:
+          repository: mirozdanie6v/uniq-smart-rent
+          ref: ${{ env.UNIQ_RELEASE_SHA }}
+          path: uniq-smart-rent
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Validate approved release
+        working-directory: uniq-smart-rent
+        run: |
+          set -euo pipefail
+          npm install
+          npm run check
+          grep -Fq 'telegram-web-app.js?63' dist/index.html
+          grep -Fq 'dashboard.viiversion.com/tracker.js' dist/index.html
+          grep -Fq 'telegramAutofilled' src/integrations/telegram/contactAutofill.ts
+          grep -Fq -- '--review-line' src/review-polish.css
+
+      - name: Resolve production D1 in VIIVERSION account
+        id: d1
+        shell: bash
+        run: |
+          set -euo pipefail
+          auth=(-H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" -H 'Content-Type: application/json')
+          list=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/d1/database?per_page=100" "${auth[@]}")
+          test "$(echo "$list" | jq -r '.success')" = "true"
+          db_id=$(echo "$list" | jq -r --arg name "$UNIQ_DB_NAME" '.result[] | select(.name == $name) | .uuid' | head -n1)
+          test -n "$db_id"
+          test "$db_id" != "null"
+          echo "database_id=$db_id" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare production Wrangler config
+        working-directory: uniq-smart-rent
+        env:
+          UNIQ_D1_DATABASE_ID: ${{ steps.d1.outputs.database_id }}
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const cfg = JSON.parse(fs.readFileSync('wrangler.jsonc', 'utf8'));
+          if (!Array.isArray(cfg.d1_databases) || !cfg.d1_databases[0]) throw new Error('D1 binding missing');
+          cfg.name = process.env.UNIQ_SERVICE;
+          cfg.d1_databases[0].database_name = process.env.UNIQ_DB_NAME;
+          cfg.d1_databases[0].database_id = process.env.UNIQ_D1_DATABASE_ID;
+          delete cfg.routes;
+          delete cfg.vars?.DEMO_MODE;
+          fs.writeFileSync('wrangler.viiversion-production.jsonc', JSON.stringify(cfg, null, 2) + '\n');
+          NODE
+
+      - name: Reconcile legacy production migration marker
+        working-directory: uniq-smart-rent
+        shell: bash
+        run: |
+          set -euo pipefail
+          schema=$(npx wrangler d1 execute "$UNIQ_DB_NAME" --remote --config wrangler.viiversion-production.jsonc --command "PRAGMA table_info(pricing);" --json || true)
+          if echo "$schema" | jq -e '.[0].results[]? | select(.name == "deposit_vnd")' >/dev/null; then
+            npx wrangler d1 execute "$UNIQ_DB_NAME" --remote --config wrangler.viiversion-production.jsonc --command "INSERT OR IGNORE INTO d1_migrations (name) VALUES ('0004_pricing_deposit_vnd.sql'); INSERT OR IGNORE INTO schema_meta (version) VALUES (4);" || true
+          fi
+
+      - name: Apply React-era production migrations
+        working-directory: uniq-smart-rent
+        run: npx wrangler d1 migrations apply "$UNIQ_DB_NAME" --remote --config wrangler.viiversion-production.jsonc
+
+      - name: Deploy approved React Worker and assets
+        working-directory: uniq-smart-rent
+        run: npx wrangler deploy --config wrangler.viiversion-production.jsonc
+
+      - name: Attach main UNIQ domain
+        shell: bash
+        run: |
+          set -euo pipefail
+          response=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains" \
+            -X PUT \
+            -H 'Content-Type: application/json' \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            --data "{\"hostname\":\"${UNIQ_HOSTNAME}\",\"service\":\"${UNIQ_SERVICE}\",\"zone_id\":\"${VIIVERSION_ZONE_ID}\",\"zone_name\":\"viiversion.com\"}")
+          test "$(echo "$response" | jq -r '.success')" = "true"
+          test "$(echo "$response" | jq -r '.result.hostname')" = "$UNIQ_HOSTNAME"
+          test "$(echo "$response" | jq -r '.result.service')" = "$UNIQ_SERVICE"
+
+      - name: Verify live production
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://${UNIQ_HOSTNAME}"
+          ok=0
+          for attempt in $(seq 1 24); do
+            home_code=$(curl -L -sS --connect-timeout 5 --max-time 20 -o /tmp/uniq-home.html -w '%{http_code}' "$base/?deploy=${GITHUB_SHA}" || true)
+            health_code=$(curl -L -sS --connect-timeout 5 --max-time 20 -o /tmp/uniq-health.json -w '%{http_code}' "$base/api/health?deploy=${GITHUB_SHA}" || true)
+            vehicles_code=$(curl -L -sS --connect-timeout 5 --max-time 20 -o /tmp/uniq-vehicles.json -w '%{http_code}' "$base/api/vehicles?deploy=${GITHUB_SHA}" || true)
+            if [ "$home_code" = "200" ] && [ "$health_code" = "200" ] && [ "$vehicles_code" = "200" ] \
+              && grep -Fq 'telegram-web-app.js?63' /tmp/uniq-home.html \
+              && grep -Fq 'dashboard.viiversion.com/tracker.js' /tmp/uniq-home.html \
+              && [ "$(jq -r '.service' /tmp/uniq-health.json)" = "uniq-smart-rent" ] \
+              && [ "$(jq -r '.d1' /tmp/uniq-health.json)" = "true" ] \
+              && [ "$(jq -r '.publicFleetCount' /tmp/uniq-health.json)" = "89" ] \
+              && [ "$(jq -r '.totalPublishedFleet' /tmp/uniq-vehicles.json)" = "89" ]; then
+              echo "Verified live $base: approved React UI + Telegram SDK + analytics + D1 + 89 vehicles"
+              ok=1
+              break
+            fi
+            sleep 5
+          done
+          test "$ok" -eq 1
