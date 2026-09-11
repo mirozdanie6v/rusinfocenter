@@ -44,6 +44,9 @@ jobs:
           npm run build
           grep -Fq 'MaxTour Mini App Prototype v28' dist/index.html
           grep -Fq 'runtime-api.js' dist/index.html
+          grep -Fq 'telegram.org/js/telegram-web-app.js?63' dist/index.html
+          grep -Fq 'dashboard.viiversion.com/tracker.js' dist/index.html
+          grep -Fq 'data-project="MAX TOUR Demo"' dist/index.html
           test "$(node -e "console.log(JSON.parse(require('fs').readFileSync('dist/catalog.v28.json','utf8')).length)")" = "15"
 
       - name: Resolve or create isolated D1
@@ -87,7 +90,7 @@ jobs:
         working-directory: max-tour/standalone-v28
         run: npx wrangler deploy --config wrangler.viiversion-demo.jsonc
 
-      - name: Verify live standalone v28
+      - name: Verify live standalone v28 and analytics
         run: |
           set -euo pipefail
           base="https://${MAX_TOUR_DEMO_HOST}"
@@ -103,8 +106,11 @@ jobs:
             sleep 5
           done
           test "$ok" -eq 1
+          grep -Fq 'telegram.org/js/telegram-web-app.js?63' /tmp/home.html
+          grep -Fq 'dashboard.viiversion.com/tracker.js' /tmp/home.html
+          grep -Fq 'data-project="MAX TOUR Demo"' /tmp/home.html
           curl -L -fsS "$base/catalog.v28.json" -o /tmp/catalog.json
           jq -e 'length == 15 and any(.id == "dalat-premium")' /tmp/catalog.json >/dev/null
           curl -L -fsS -c "$jar" -b "$jar" "$base/api/bootstrap" -o /tmp/bootstrap.json
           jq -e '.ok == true and (.bookings|type) == "array" and (.travelers|type) == "array" and (.favorites|type) == "array"' /tmp/bootstrap.json >/dev/null
-          echo "Verified live standalone MAX TOUR v28 with isolated D1"
+          echo "Verified live standalone MAX TOUR v28 with isolated D1 + Telegram analytics"
