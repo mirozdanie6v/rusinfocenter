@@ -22,7 +22,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       VIIVERSION_ZONE_ID: 56fa9423ef85e05559f453af43ec400f
-      UNIQ_RELEASE_SHA: a4c3100388832f2af07082b4b3da964e02d7e145
+      UNIQ_RELEASE_SHA: bf72b13e0d0fb0d2951e389a54436d682142f0ce
       UNIQ_DB_NAME: uniq-smart-rent-db
       UNIQ_SERVICE: uniq-smart-rent
       UNIQ_HOSTNAME: uniq-smart-rent.viiversion.com
@@ -46,8 +46,15 @@ jobs:
           set -euo pipefail
           npm install
           npm run check
+          node --check public/i18n-current.js
+          node --check public/i18n-current-safe.js
           grep -Fq 'telegram-web-app.js?63' dist/index.html
           grep -Fq 'dashboard.viiversion.com/tracker.js' dist/index.html
+          grep -Fq 'i18n-current-safe.js' dist/index.html
+          grep -Fq 'CRM · КЛИЕНТЫ' public/i18n-current.js
+          grep -Fq 'Тестовая оплата: подтвердить' public/i18n-current.js
+          grep -Fq 'АНАЛИТИКА' public/i18n-current.js
+          grep -Fq 'КОМАНДА И ФИЛИАЛЫ' public/i18n-current.js
           grep -Fq 'telegramAutofilled' src/integrations/telegram/contactAutofill.ts
           grep -Fq -- '--review-line' src/review-polish.css
           grep -Fq 'data-payment-done' src/features/payments/PaymentCheckout.tsx
@@ -131,14 +138,17 @@ jobs:
             health_code=$(curl -L -sS --connect-timeout 5 --max-time 20 -o /tmp/uniq-health.json -w '%{http_code}' "$base/api/health?deploy=${GITHUB_SHA}" || true)
             vehicles_code=$(curl -L -sS --connect-timeout 5 --max-time 20 -o /tmp/uniq-vehicles.json -w '%{http_code}' "$base/api/vehicles?deploy=${GITHUB_SHA}" || true)
             providers_code=$(curl -L -sS --connect-timeout 5 --max-time 20 -o /tmp/uniq-providers.json -w '%{http_code}' "$base/api/payments/providers?deploy=${GITHUB_SHA}" || true)
-            if [ "$home_code" = "200" ] && [ "$health_code" = "200" ] && [ "$vehicles_code" = "200" ] && [ "$providers_code" = "200" ] \
+            current_i18n_code=$(curl -L -sS --connect-timeout 5 --max-time 20 -o /tmp/uniq-i18n-current.js -w '%{http_code}' "$base/i18n-current.js?deploy=${GITHUB_SHA}" || true)
+            if [ "$home_code" = "200" ] && [ "$health_code" = "200" ] && [ "$vehicles_code" = "200" ] && [ "$providers_code" = "200" ] && [ "$current_i18n_code" = "200" ] \
               && grep -Fq 'telegram-web-app.js?63' /tmp/uniq-home.html \
               && grep -Fq 'dashboard.viiversion.com/tracker.js' /tmp/uniq-home.html \
+              && grep -Fq 'i18n-current-safe.js' /tmp/uniq-home.html \
+              && grep -Fq 'Тестовая оплата: подтвердить' /tmp/uniq-i18n-current.js \
               && [ "$(jq -r '.service' /tmp/uniq-health.json)" = "uniq-smart-rent" ] \
               && [ "$(jq -r '.d1' /tmp/uniq-health.json)" = "true" ] \
               && [ "$(jq -r '.totalPublishedFleet' /tmp/uniq-vehicles.json)" = "89" ] \
               && [ "$(jq -r '[.providers[] | select(.checkoutMode == "demo")] | length' /tmp/uniq-providers.json)" -ge 1 ]; then
-              echo "Verified live $base: React UI + Telegram + D1 + 89 vehicles + test payment mode"
+              echo "Verified live $base: React UI + complete RU/VI/EN/KO/ZH translations + Telegram + D1 + 89 vehicles + test payment mode"
               ok=1
               break
             fi
