@@ -20,7 +20,7 @@ jobs:
       VIIVERSION_ZONE_ID: 56fa9423ef85e05559f453af43ec400f
       AUTO_DB_NAME: auto-sale-db
       AUTO_SERVICE: auto-sale-usa
-      AUTO_HOSTNAME: auto_sale.viiversion.com
+      AUTO_HOSTNAME: auto-sale.viiversion.com
 
     steps:
       - name: Checkout AUTO SALE source
