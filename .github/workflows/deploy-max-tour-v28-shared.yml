@@ -18,6 +18,7 @@ jobs:
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      VIIVERSION_ZONE_ID: 56fa9423ef85e05559f453af43ec400f
       MAX_TOUR_DEMO_DB: max-tour-standalone-v28-db
       MAX_TOUR_DEMO_SERVICE: max-tour-demo-v28
       MAX_TOUR_DEMO_HOST: max-tour-demo.viiversion.com
@@ -89,6 +90,19 @@ jobs:
       - name: Deploy standalone Worker and assets
         working-directory: max-tour/standalone-v28
         run: npx wrangler deploy --config wrangler.viiversion-demo.jsonc
+
+      - name: Attach demo custom domain
+        shell: bash
+        run: |
+          set -euo pipefail
+          response=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains" \
+            -X PUT \
+            -H 'Content-Type: application/json' \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            --data "{\"hostname\":\"${MAX_TOUR_DEMO_HOST}\",\"service\":\"${MAX_TOUR_DEMO_SERVICE}\",\"zone_id\":\"${VIIVERSION_ZONE_ID}\",\"zone_name\":\"viiversion.com\"}")
+          test "$(echo "$response" | jq -r '.success')" = "true"
+          test "$(echo "$response" | jq -r '.result.hostname')" = "$MAX_TOUR_DEMO_HOST"
+          test "$(echo "$response" | jq -r '.result.service')" = "$MAX_TOUR_DEMO_SERVICE"
 
       - name: Verify live standalone v28 and analytics
         run: |
