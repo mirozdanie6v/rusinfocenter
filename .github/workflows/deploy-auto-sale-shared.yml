@@ -116,3 +116,19 @@ jobs:
             sleep 5
           done
           test "$ok" -eq 1
+
+      - name: Verify responsive viewports
+        shell: bash
+        run: |
+          set -euo pipefail
+          chrome=$(command -v google-chrome || command -v chromium || command -v chromium-browser)
+          test -n "$chrome"
+          for width in 360 390 430 768 1024; do
+            echo "Checking viewport ${width}px"
+            dom=$("$chrome" --headless --disable-gpu --no-sandbox --hide-scrollbars --window-size=${width},1200 --virtual-time-budget=8000 --dump-dom "https://${AUTO_HOSTNAME}/?layoutAudit=1&width=${width}" 2>/dev/null)
+            if ! echo "$dom" | grep -q 'LAYOUT_AUDIT_OK'; then
+              echo "$dom" | grep -o 'LAYOUT_AUDIT_FAIL[^<]*' || true
+              exit 1
+            fi
+          done
+          echo "Responsive viewport audit passed"
