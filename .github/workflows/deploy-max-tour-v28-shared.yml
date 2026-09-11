@@ -113,8 +113,10 @@ jobs:
           for attempt in $(seq 1 24); do
             home=$(curl -L -sS --connect-timeout 5 --max-time 25 -o /tmp/home.html -w '%{http_code}' "$base/?deploy=${GITHUB_SHA}" || true)
             health=$(curl -L -sS --connect-timeout 5 --max-time 25 -o /tmp/health.json -w '%{http_code}' "$base/api/health?deploy=${GITHUB_SHA}" || true)
+            admin=$(curl -L -sS --connect-timeout 5 --max-time 25 -o /tmp/admin.html -w '%{http_code}' "$base/admin/?deploy=${GITHUB_SHA}" || true)
             director=$(curl -L -sS --connect-timeout 5 --max-time 25 -o /tmp/director.html -w '%{http_code}' "$base/director/?deploy=${GITHUB_SHA}" || true)
-            if [ "$home" = "200" ] && [ "$health" = "200" ] && [ "$director" = "200" ] && grep -Fq 'MaxTour Mini App Prototype v28' /tmp/home.html && grep -Fq 'maxtourDirectorDrafts' /tmp/director.html && grep -Fq 'function searchIndex' /tmp/director.html && grep -Fq 'data-filter="period"' /tmp/director.html && [ "$(jq -r '.app' /tmp/health.json)" = "max-tour-v28-standalone" ]; then
+            logo=$(curl -L -sS --connect-timeout 5 --max-time 25 -o /tmp/max-tour-logo.svg -w '%{http_code}' "$base/max-tour-logo.svg?deploy=${GITHUB_SHA}" || true)
+            if [ "$home" = "200" ] && [ "$health" = "200" ] && [ "$admin" = "200" ] && [ "$director" = "200" ] && [ "$logo" = "200" ] && grep -Fq 'MaxTour Mini App Prototype v28' /tmp/home.html && grep -Fq '/max-tour-logo.svg' /tmp/home.html && grep -Fq '/max-tour-logo.svg' /tmp/admin.html && grep -Fq '/max-tour-logo.svg' /tmp/director.html && grep -Fq '<svg' /tmp/max-tour-logo.svg && grep -Fq 'maxtourDirectorDrafts' /tmp/director.html && grep -Fq 'function searchIndex' /tmp/director.html && grep -Fq 'data-filter="period"' /tmp/director.html && [ "$(jq -r '.app' /tmp/health.json)" = "max-tour-v28-standalone" ]; then
               ok=1
               break
             fi
