@@ -117,6 +117,23 @@ jobs:
           done
           test "$ok" -eq 1
 
+      - name: Verify live quote save flow
+        shell: bash
+        run: |
+          set -euo pipefail
+          chrome=$(command -v google-chrome || command -v chromium || command -v chromium-browser)
+          test -n "$chrome"
+          "$chrome" --headless --disable-gpu --no-sandbox --hide-scrollbars --window-size=390,1200 --virtual-time-budget=7000 --dump-dom "https://${AUTO_HOSTNAME}/?quoteAudit=1&deploy=${GITHUB_SHA}" > /tmp/auto-sale-quote-audit.html 2>/dev/null
+          quote_result=$(python3 - <<'PY'
+          import html,re
+          data=open('/tmp/auto-sale-quote-audit.html',encoding='utf-8').read()
+          m=re.search(r'<pre[^>]*id=["\']quote-live-audit-result["\'][^>]*>(.*?)</pre>',data,re.S)
+          print(html.unescape(m.group(1)).strip() if m else 'QUOTE_LIVE_AUDIT_RESULT_MISSING')
+          PY
+          )
+          echo "$quote_result"
+          test "$quote_result" = "QUOTE_LIVE_AUDIT_OK"
+
       - name: Verify responsive viewports and live API
         shell: bash
         run: |
