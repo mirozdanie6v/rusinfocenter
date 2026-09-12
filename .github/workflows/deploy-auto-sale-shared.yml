@@ -117,7 +117,7 @@ jobs:
           done
           test "$ok" -eq 1
 
-      - name: Verify responsive viewports
+      - name: Verify responsive viewports and live API
         shell: bash
         run: |
           set -euo pipefail
@@ -126,16 +126,20 @@ jobs:
           for width in 360 390 430 768 1024; do
             echo "Checking viewport ${width}px"
             "$chrome" --headless --disable-gpu --no-sandbox --hide-scrollbars --window-size=${width},1200 --virtual-time-budget=12000 --dump-dom "https://${AUTO_HOSTNAME}/?layoutAudit=1&width=${width}&deploy=${GITHUB_SHA}" > /tmp/auto-sale-dom.html 2>/dev/null
-            result=$(python3 - <<'PY'
+            readarray -t results < <(python3 - <<'PY'
           import html,re
           data=open('/tmp/auto-sale-dom.html',encoding='utf-8').read()
-          match=re.search(r'<pre[^>]*id=["\']layout-audit-result["\'][^>]*>(.*?)</pre>',data,re.S)
-          print(html.unescape(match.group(1)).strip() if match else 'LAYOUT_AUDIT_RESULT_MISSING')
+          for node_id,missing in [('layout-audit-result','LAYOUT_AUDIT_RESULT_MISSING'),('api-audit-result','API_AUDIT_RESULT_MISSING')]:
+              m=re.search(r'<pre[^>]*id=["\']'+re.escape(node_id)+r'["\'][^>]*>(.*?)</pre>',data,re.S)
+              print(html.unescape(m.group(1)).strip() if m else missing)
           PY
             )
-            echo "$result"
-            if [ "$result" != "LAYOUT_AUDIT_OK" ]; then
+            layout_result="${results[0]:-LAYOUT_AUDIT_RESULT_MISSING}"
+            api_result="${results[1]:-API_AUDIT_RESULT_MISSING}"
+            echo "$layout_result"
+            echo "$api_result"
+            if [ "$layout_result" != "LAYOUT_AUDIT_OK" ] || [ "$api_result" != "API_AUDIT_OK" ]; then
               exit 1
             fi
           done
-          echo "Responsive viewport audit passed"
+          echo "Responsive viewport and live API audits passed"
