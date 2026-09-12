@@ -1,5 +1,5 @@
-trigger=2026-09-12T09:39:41Z
+trigger=2026-09-12T09:48:46Z
 source=mirozdanie6v/MAX-TOUR@demo/max-tour-demo
-source_commit=75f08039f940a0e636bbd9ce4678861741af2028
-mode=standalone-v28-ai-chat-thread
+source_commit=b0890f3813148c4836b82532b4ba8e7cfc3c0af8
+mode=standalone-v28-ai-chat-layout
 target=https://max-tour-demo.viiversion.com
