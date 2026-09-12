@@ -125,9 +125,16 @@ jobs:
           test -n "$chrome"
           for width in 360 390 430 768 1024; do
             echo "Checking viewport ${width}px"
-            dom=$("$chrome" --headless --disable-gpu --no-sandbox --hide-scrollbars --window-size=${width},1200 --virtual-time-budget=8000 --dump-dom "https://${AUTO_HOSTNAME}/?layoutAudit=1&width=${width}" 2>/dev/null)
-            if ! echo "$dom" | grep -q 'LAYOUT_AUDIT_OK'; then
-              echo "$dom" | grep -o 'LAYOUT_AUDIT_FAIL[^<]*' || true
+            "$chrome" --headless --disable-gpu --no-sandbox --hide-scrollbars --window-size=${width},1200 --virtual-time-budget=12000 --dump-dom "https://${AUTO_HOSTNAME}/?layoutAudit=1&width=${width}&deploy=${GITHUB_SHA}" > /tmp/auto-sale-dom.html 2>/dev/null
+            result=$(python3 - <<'PY'
+          import html,re
+          data=open('/tmp/auto-sale-dom.html',encoding='utf-8').read()
+          match=re.search(r'<pre[^>]*id=["\']layout-audit-result["\'][^>]*>(.*?)</pre>',data,re.S)
+          print(html.unescape(match.group(1)).strip() if match else 'LAYOUT_AUDIT_RESULT_MISSING')
+          PY
+            )
+            echo "$result"
+            if [ "$result" != "LAYOUT_AUDIT_OK" ]; then
               exit 1
             fi
           done
