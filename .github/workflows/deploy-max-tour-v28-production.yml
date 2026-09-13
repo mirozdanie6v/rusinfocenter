@@ -1,0 +1,200 @@
+name: Deploy MAX TOUR Standalone v28 to Production
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.deploy-max-tour-v28-production'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: max-tour-v28-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      VIIVERSION_ZONE_ID: 56fa9423ef85e05559f453af43ec400f
+      MAX_TOUR_PROD_DB: max-tour-standalone-v28-production-db
+      MAX_TOUR_PROD_SERVICE: max-tour-v28-production
+      MAX_TOUR_PROD_HOST: max-tour.viiversion.com
+
+    steps:
+      - name: Checkout exact live demo source
+        uses: actions/checkout@v5
+        with:
+          repository: mirozdanie6v/MAX-TOUR
+          ref: demo/max-tour-demo
+          path: max-tour
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Verify and build standalone v28 only
+        working-directory: max-tour/standalone-v28
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --ignore-scripts --no-audit --no-fund --package-lock=false
+          npm test
+          npm run build
+          grep -Fq 'MaxTour Mini App Prototype v28' dist/index.html
+          grep -Fq 'Кабинет администратора' dist/admin/index.html
+          grep -Fq 'Кабинет директора' dist/director/index.html
+          test "$(node -e "console.log(JSON.parse(require('fs').readFileSync('dist/catalog.v28.json','utf8')).length)")" = "15"
+
+      - name: Apply production-only typography polish
+        working-directory: max-tour/standalone-v28
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > dist/production-polish.css <<'CSS'
+          html.max-tour-production *,
+          html.max-tour-production *::before,
+          html.max-tour-production *::after {
+            word-break: normal !important;
+            overflow-wrap: normal !important;
+            hyphens: none !important;
+            -webkit-hyphens: none !important;
+          }
+
+          html.max-tour-production button,
+          html.max-tour-production [role='button'],
+          html.max-tour-production a[class*='btn'],
+          html.max-tour-production a[class*='button'] {
+            text-align: center !important;
+          }
+
+          html.max-tour-production button > *,
+          html.max-tour-production [role='button'] > * {
+            text-align: inherit;
+          }
+
+          html.max-tour-production button,
+          html.max-tour-production [role='button'],
+          html.max-tour-production nav a,
+          html.max-tour-production .chip,
+          html.max-tour-production .pill,
+          html.max-tour-production .badge,
+          html.max-tour-production .tag {
+            word-break: keep-all !important;
+            overflow-wrap: normal !important;
+            hyphens: none !important;
+            -webkit-hyphens: none !important;
+          }
+          CSS
+
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const root = path.resolve('dist');
+          const marker = `<script>if(location.hostname==='max-tour.viiversion.com')document.documentElement.classList.add('max-tour-production')</script><link rel="stylesheet" href="/production-polish.css">`;
+          function walk(dir){
+            for(const name of fs.readdirSync(dir)){
+              const p=path.join(dir,name);
+              const st=fs.statSync(p);
+              if(st.isDirectory()) walk(p);
+              else if(name.endsWith('.html')){
+                let s=fs.readFileSync(p,'utf8');
+                if(!s.includes('production-polish.css')){
+                  s=s.includes('</head>') ? s.replace('</head>', marker+'</head>') : marker+s;
+                  fs.writeFileSync(p,s);
+                }
+              }
+            }
+          }
+          walk(root);
+          NODE
+
+          grep -Fq 'production-polish.css' dist/index.html
+          grep -Fq 'production-polish.css' dist/admin/index.html
+          grep -Fq 'production-polish.css' dist/director/index.html
+
+      - name: Resolve or create isolated production D1
+        id: d1
+        working-directory: max-tour/standalone-v28
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s\n' '{"compatibility_date":"2026-09-09"}' > /tmp/wrangler-empty.jsonc
+          npx wrangler d1 list --json --config /tmp/wrangler-empty.jsonc > /tmp/d1.json
+          db_id=$(jq -r --arg name "$MAX_TOUR_PROD_DB" '.[] | select(.name == $name) | .uuid' /tmp/d1.json | head -n1)
+          if [ -z "$db_id" ] || [ "$db_id" = "null" ]; then
+            npx wrangler d1 create "$MAX_TOUR_PROD_DB" --config /tmp/wrangler-empty.jsonc
+            npx wrangler d1 list --json --config /tmp/wrangler-empty.jsonc > /tmp/d1.json
+            db_id=$(jq -r --arg name "$MAX_TOUR_PROD_DB" '.[] | select(.name == $name) | .uuid' /tmp/d1.json | head -n1)
+          fi
+          test -n "$db_id"
+          test "$db_id" != "null"
+          echo "database_id=$db_id" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare production Cloudflare config
+        working-directory: max-tour/standalone-v28
+        env:
+          PROD_D1_DATABASE_ID: ${{ steps.d1.outputs.database_id }}
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const cfg = JSON.parse(fs.readFileSync('wrangler.jsonc', 'utf8'));
+          cfg.name = process.env.MAX_TOUR_PROD_SERVICE;
+          cfg.vars = { ...(cfg.vars || {}), APP_ENV: 'production-v28', APP_URL: `https://${process.env.MAX_TOUR_PROD_HOST}`, PUBLIC_ADMIN_DEMO: 'true' };
+          cfg.d1_databases[0].database_name = process.env.MAX_TOUR_PROD_DB;
+          cfg.d1_databases[0].database_id = process.env.PROD_D1_DATABASE_ID;
+          delete cfg.routes;
+          fs.writeFileSync('wrangler.viiversion-production.jsonc', JSON.stringify(cfg, null, 2) + '\n');
+          NODE
+
+      - name: Apply standalone migrations
+        working-directory: max-tour/standalone-v28
+        run: npx wrangler d1 migrations apply "$MAX_TOUR_PROD_DB" --remote --config wrangler.viiversion-production.jsonc
+
+      - name: Deploy exact v28 Worker and assets
+        working-directory: max-tour/standalone-v28
+        run: npx wrangler deploy --config wrangler.viiversion-production.jsonc
+
+      - name: Attach production custom domain
+        shell: bash
+        run: |
+          set -euo pipefail
+          response=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains" \
+            -X PUT \
+            -H 'Content-Type: application/json' \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            --data "{\"hostname\":\"${MAX_TOUR_PROD_HOST}\",\"service\":\"${MAX_TOUR_PROD_SERVICE}\",\"zone_id\":\"${VIIVERSION_ZONE_ID}\",\"zone_name\":\"viiversion.com\"}")
+          echo "$response" | jq '{success,result:{hostname:.result.hostname,service:.result.service},errors}'
+          test "$(echo "$response" | jq -r '.success')" = "true"
+          test "$(echo "$response" | jq -r '.result.hostname')" = "$MAX_TOUR_PROD_HOST"
+          test "$(echo "$response" | jq -r '.result.service')" = "$MAX_TOUR_PROD_SERVICE"
+
+      - name: Verify live production is Standalone v28
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://${MAX_TOUR_PROD_HOST}"
+          ok=0
+          for attempt in $(seq 1 30); do
+            home=$(curl -L -sS --connect-timeout 5 --max-time 25 -o /tmp/home.html -w '%{http_code}' "$base/?deploy=${GITHUB_SHA}" || true)
+            admin=$(curl -L -sS --connect-timeout 5 --max-time 25 -o /tmp/admin.html -w '%{http_code}' "$base/admin/?deploy=${GITHUB_SHA}" || true)
+            director=$(curl -L -sS --connect-timeout 5 --max-time 25 -o /tmp/director.html -w '%{http_code}' "$base/director/?deploy=${GITHUB_SHA}" || true)
+            health=$(curl -L -sS --connect-timeout 5 --max-time 25 -o /tmp/health.json -w '%{http_code}' "$base/api/health?deploy=${GITHUB_SHA}" || true)
+            if [ "$home" = "200" ] && [ "$admin" = "200" ] && [ "$director" = "200" ] && [ "$health" = "200" ] && grep -Fq 'MaxTour Mini App Prototype v28' /tmp/home.html && grep -Fq 'production-polish.css' /tmp/home.html && grep -Fq 'Кабинет администратора' /tmp/admin.html && grep -Fq 'Кабинет директора' /tmp/director.html && [ "$(jq -r '.app' /tmp/health.json)" = "max-tour-v28-standalone" ]; then
+              ok=1
+              break
+            fi
+            sleep 5
+          done
+          test "$ok" -eq 1
+          curl -L -fsS "$base/catalog.v28.json?deploy=${GITHUB_SHA}" -o /tmp/catalog.json
+          jq -e 'length == 15 and any(.id == "dalat-premium")' /tmp/catalog.json >/dev/null
+          echo 'MAX TOUR production now serves exact Standalone v28 source with production typography polish.'
