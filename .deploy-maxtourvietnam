@@ -1,5 +1,5 @@
-trigger=2026-09-15-exact-tour-zero-blocks-gallery-fix
+trigger=2026-09-15-exact-tour-zero-blocks-clean-gallery
 source=mirozdanie6v/maxtourvietnam@main
 domain=maxtourvietnam.viiversion.com
-revision=a0209c29964929addf5f3b4f9d70c75ff79939ad
+revision=74f8d32999375a2568082f0bed05a028174ed8de
 runner=5e659d0b2b3ba1406a7605d81444d6cceb0278d9
