@@ -22,6 +22,7 @@ jobs:
       MAX_TOUR_DEMO_DB: max-tour-standalone-v28-db
       MAX_TOUR_DEMO_SERVICE: max-tour-demo-v28
       MAX_TOUR_DEMO_HOST: max-tour-demo.viiversion.com
+      MAX_TOUR_MEDIA_BUCKET: max-tour-demo-v28-media
 
     steps:
       - name: Checkout standalone v28
@@ -49,6 +50,40 @@ jobs:
           grep -Fq 'dashboard.viiversion.com/tracker.js' dist/index.html
           grep -Fq 'data-project="MAX TOUR Demo"' dist/index.html
           test "$(node -e "console.log(JSON.parse(require('fs').readFileSync('dist/catalog.v28.json','utf8')).length)")" = "15"
+          node -e "const c=JSON.parse(require('fs').readFileSync('dist/catalog.v28.json','utf8')); if(c.some(t=>[t.image,t.fallbackImage,...(t.gallery||[])].some(v=>/^https?:\/\//i.test(String(v))))) process.exit(1)"
+
+      - name: Resolve or create tour media R2 bucket
+        working-directory: max-tour/standalone-v28
+        run: |
+          set -euo pipefail
+          printf '%s\n' '{"compatibility_date":"2026-09-09"}' > /tmp/wrangler-empty.jsonc
+          if ! npx wrangler r2 bucket info "$MAX_TOUR_MEDIA_BUCKET" --json --config /tmp/wrangler-empty.jsonc >/tmp/r2-bucket.json 2>/tmp/r2-info.err; then
+            npx wrangler r2 bucket create "$MAX_TOUR_MEDIA_BUCKET" --config /tmp/wrangler-empty.jsonc
+            npx wrangler r2 bucket info "$MAX_TOUR_MEDIA_BUCKET" --json --config /tmp/wrangler-empty.jsonc >/tmp/r2-bucket.json
+          fi
+          test "$(jq -r '.name // .bucket_name // empty' /tmp/r2-bucket.json)" = "$MAX_TOUR_MEDIA_BUCKET" || grep -Fq "$MAX_TOUR_MEDIA_BUCKET" /tmp/r2-bucket.json
+
+      - name: Prepare and upload verified tour media to R2
+        working-directory: max-tour/standalone-v28
+        run: |
+          set -euo pipefail
+          npm run prepare:tour-media
+          node <<'NODE' > /tmp/r2-upload.tsv
+          const fs = require('fs');
+          const manifest = JSON.parse(fs.readFileSync('src/tour-media-sources.json','utf8'));
+          for (const item of manifest.items) {
+            const key = String(item.key);
+            const type = key.endsWith('.png') ? 'image/png' : key.endsWith('.webp') ? 'image/webp' : key.endsWith('.avif') ? 'image/avif' : 'image/jpeg';
+            process.stdout.write(`${key}\t${type}\n`);
+          }
+          NODE
+          while IFS=$'\t' read -r key type; do
+            npx wrangler r2 object put "${MAX_TOUR_MEDIA_BUCKET}/${key}" \
+              --file ".tour-media/${key}" \
+              --content-type "$type" \
+              --cache-control "public, max-age=31536000, immutable" \
+              --remote
+          done < /tmp/r2-upload.tsv
 
       - name: Resolve or create isolated D1
         id: d1
@@ -79,6 +114,9 @@ jobs:
           cfg.vars = { ...(cfg.vars || {}), APP_ENV: 'demo-v28', APP_URL: `https://${process.env.MAX_TOUR_DEMO_HOST}` };
           cfg.d1_databases[0].database_name = process.env.MAX_TOUR_DEMO_DB;
           cfg.d1_databases[0].database_id = process.env.DEMO_D1_DATABASE_ID;
+          if (!Array.isArray(cfg.r2_buckets) || !cfg.r2_buckets.some(binding => binding.binding === 'TOUR_MEDIA' && binding.bucket_name === process.env.MAX_TOUR_MEDIA_BUCKET)) {
+            throw new Error('TOUR_MEDIA R2 binding is missing or points to the wrong bucket');
+          }
           delete cfg.routes;
           fs.writeFileSync('wrangler.viiversion-demo.jsonc', JSON.stringify(cfg, null, 2) + '\n');
           NODE
@@ -104,7 +142,7 @@ jobs:
           test "$(echo "$response" | jq -r '.result.hostname')" = "$MAX_TOUR_DEMO_HOST"
           test "$(echo "$response" | jq -r '.result.service')" = "$MAX_TOUR_DEMO_SERVICE"
 
-      - name: Verify live standalone v28 and analytics
+      - name: Verify live standalone v28, R2 tour media and analytics
         run: |
           set -euo pipefail
           base="https://${MAX_TOUR_DEMO_HOST}"
@@ -129,6 +167,8 @@ jobs:
           grep -Fq 'sessionStorage' /tmp/director.html
           curl -L -fsS "$base/catalog.v28.json" -o /tmp/catalog.json
           jq -e 'length == 15 and any(.id == "dalat-premium")' /tmp/catalog.json >/dev/null
+          jq -e 'all(.[]; (([.image, .fallbackImage] + (.gallery // [])) | all(.[]; (startswith("/tour-media/")) and (startswith("http://") or startswith("https://") | not))))' /tmp/catalog.json >/dev/null
+          (cd max-tour/standalone-v28 && MAX_TOUR_BASE="$base" npm run verify:tour-media)
           curl -L -fsS -c "$jar" -b "$jar" "$base/api/bootstrap" -o /tmp/bootstrap.json
           jq -e '.ok == true and (.bookings|type) == "array" and (.travelers|type) == "array" and (.favorites|type) == "array"' /tmp/bootstrap.json >/dev/null
-          echo "Verified live standalone MAX TOUR v28 with isolated D1 + Telegram analytics"
+          echo "Verified live standalone MAX TOUR v28 with isolated D1 + private R2 tour media + Telegram analytics"
