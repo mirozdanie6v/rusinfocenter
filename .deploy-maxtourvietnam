@@ -1,5 +1,5 @@
-trigger=2026-09-15-source-parity-mobile-reviews-galleries-smoke-fixed
+trigger=2026-09-15-source-page-order-hero-footer-v3
 source=mirozdanie6v/maxtourvietnam@main
 domain=maxtourvietnam.viiversion.com
-revision=0cd8fa476bfa01b1bc2fa024bf40835ee8b75a05
+revision=e4e4a9af79eed7ee238677875f741e45b977bd50
 runner=225cf2c97b8b0128cbe5849c3f98def07e202dbd
