@@ -58,9 +58,9 @@ jobs:
           npm run sync:media
           test -d public/mirror-media
           test "$(find public/mirror-media -type f | wc -l)" -gt 0
-          ! grep -q 'tildacdn' seed/tours.sql
+          ! grep -R -q 'tildacdn' index.html src/client seed
           grep -q '/mirror-media/' seed/tours.sql
-          echo 'Source media localized into the deployment bundle and D1 seed.'
+          echo 'All storefront Tilda media localized into the deployment bundle and D1 seed.'
 
       - name: Build
         working-directory: maxtourvietnam
@@ -68,6 +68,8 @@ jobs:
         run: |
           set -euo pipefail
           npm run build
+          ! grep -R -q 'tildacdn' dist
+          echo 'Production bundle verified: no Tilda CDN dependency remains.'
 
       - name: Ensure D1 database and prepare deploy config
         working-directory: maxtourvietnam
