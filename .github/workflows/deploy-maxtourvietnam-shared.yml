@@ -43,12 +43,30 @@ jobs:
           test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
           echo 'Shared Cloudflare credentials are available.'
 
-      - name: Install and build
+      - name: Install dependencies
         working-directory: maxtourvietnam
         shell: bash
         run: |
           set -euo pipefail
           npm install --no-audit --no-fund
+
+      - name: Localize source media
+        working-directory: maxtourvietnam
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run sync:media
+          test -d public/mirror-media
+          test "$(find public/mirror-media -type f | wc -l)" -gt 0
+          ! grep -q 'tildacdn' seed/tours.sql
+          grep -q '/mirror-media/' seed/tours.sql
+          echo 'Source media localized into the deployment bundle and D1 seed.'
+
+      - name: Build
+        working-directory: maxtourvietnam
+        shell: bash
+        run: |
+          set -euo pipefail
           npm run build
 
       - name: Ensure D1 database and prepare deploy config
