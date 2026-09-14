@@ -1,4 +1,5 @@
-trigger=2026-09-15
+trigger=2026-09-15-media-localization-v2
 source=mirozdanie6v/maxtourvietnam@main
 domain=maxtourvietnam.viiversion.com
 revision=649094cf31e41237c1bdf43af9fb50a333bbfa82
+runner=8c326b0f46aa5a658beb43a9774524e04be6eb4b
