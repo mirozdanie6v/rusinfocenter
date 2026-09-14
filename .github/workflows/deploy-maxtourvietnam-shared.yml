@@ -50,20 +50,28 @@ jobs:
           set -euo pipefail
           npm install --no-audit --no-fund
 
-      - name: Sync source galleries and reviews
+      - name: Sync source galleries reviews and exact tour blocks
         working-directory: maxtourvietnam
         shell: bash
         run: |
           set -euo pipefail
           npm run sync:galleries
           npm run sync:reviews
+          npm run sync:main-records
           test -s src/client/generatedGalleries.ts
           test -s src/client/generatedReviews.ts
+          test -s public/tour-main/manifest.json
           gallery_refs=$(grep -o '/tour-galleries/' src/client/generatedGalleries.ts | wc -l)
           review_rows=$(grep -o '"name"' src/client/generatedReviews.ts | wc -l)
+          tour_main_count=$(find public/tour-main -maxdepth 1 -type f -name '*.html' | wc -l)
           test "$gallery_refs" -gt 0
           test "$review_rows" -ge 112
-          echo "Source parity generated: ${gallery_refs} gallery images, ${review_rows} reviews."
+          test "$tour_main_count" -eq 28
+          grep -q 'Пагода Лонг Шон' public/tour-main/dnevnaya-obzornaya-ekskursiya-po-nyachangu.html
+          grep -q 'Ba Na Hills' public/tour-main/danang-i-hoyan-na-2-dnya-iz-nyachanga.html
+          grep -q 'вилла 3 спальни' public/tour-main/vinwonders-marriott-nyachang-2-dnya.html
+          grep -q 'Zip Line трасса' public/tour-main/zipline-i-verevochnyj-park-v-nyachange.html
+          echo "Source parity generated: ${gallery_refs} gallery images, ${review_rows} reviews, ${tour_main_count} exact tour blocks."
 
       - name: Localize source media
         working-directory: maxtourvietnam
@@ -73,9 +81,10 @@ jobs:
           npm run sync:media
           test -d public/mirror-media
           test "$(find public/mirror-media -type f | wc -l)" -gt 0
-          ! grep -R -q 'tildacdn' index.html src/client seed
+          ! grep -R -q 'tildacdn' index.html src/client seed public/tour-main
           grep -q '/mirror-media/' seed/tours.sql
-          echo 'All storefront Tilda media localized into the deployment bundle and D1 seed.'
+          grep -R -q '/mirror-media/' public/tour-main
+          echo 'All storefront and exact ZeroBlock Tilda media localized into the deployment bundle and D1 seed.'
 
       - name: Build
         working-directory: maxtourvietnam
@@ -86,7 +95,9 @@ jobs:
           ! grep -R -q 'tildacdn' dist
           grep -R -q '/tour-galleries/' dist
           grep -R -q 'Михаил' dist
-          echo 'Production bundle verified: local galleries/reviews present and no Tilda CDN dependency remains.'
+          test "$(find dist/tour-main -maxdepth 1 -type f -name '*.html' | wc -l)" -eq 28
+          grep -q 'Пагода Лонг Шон' dist/tour-main/dnevnaya-obzornaya-ekskursiya-po-nyachangu.html
+          echo 'Production bundle verified: 28 exact tour blocks, local galleries/reviews and no Tilda CDN dependency remain.'
 
       - name: Ensure D1 database and prepare deploy config
         working-directory: maxtourvietnam
@@ -174,6 +185,10 @@ jobs:
           grep -q 'id="root"' /tmp/home.html
           curl -L -fsS --connect-timeout 5 --max-time 20 "$base/dnevnaya-obzornaya-ekskursiya-po-nyachangu" -o /tmp/tour.html
           grep -q 'id="root"' /tmp/tour.html
+          curl -L -fsS --connect-timeout 5 --max-time 20 "$base/tour-main/dnevnaya-obzornaya-ekskursiya-po-nyachangu.html?smoke=${GITHUB_SHA}" -o /tmp/tour-main.html
+          grep -q 'Пагода Лонг Шон' /tmp/tour-main.html
+          grep -q '/mirror-media/' /tmp/tour-main.html
+          ! grep -q 'tildacdn' /tmp/tour-main.html
           curl -L -fsS --connect-timeout 5 --max-time 20 "$base/tour-galleries/dnevnaya-obzornaya-ekskursiya-po-nyachangu/01.png" -o /tmp/gallery.png
           test -s /tmp/gallery.png
-          echo 'maxtourvietnam production verified: API, 28 local D1 covers, local galleries/reviews, and storefront are healthy.'
+          echo 'maxtourvietnam production verified: API, 28 local D1 covers, 28 exact tour blocks, local galleries/reviews, and storefront are healthy.'
