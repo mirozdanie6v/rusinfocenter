@@ -1,3 +1,4 @@
-deploy max-tour production 2026-09-14 filter-press-feedback-v1
+deploy max-tour production 2026-09-14 filter-press-feedback-v2
 source=mirozdanie6v/MAX-TOUR@demo/max-tour-demo
+source_commit=a32c17d35858b6a3cc0b020c74d116c88b351f8b
 target=https://max-tour.viiversion.com
