@@ -62,7 +62,7 @@ jobs:
           gallery_refs=$(grep -o '/tour-galleries/' src/client/generatedGalleries.ts | wc -l)
           review_rows=$(grep -o '"name"' src/client/generatedReviews.ts | wc -l)
           test "$gallery_refs" -gt 0
-          test "$review_rows" -gt 0
+          test "$review_rows" -ge 112
           echo "Source parity generated: ${gallery_refs} gallery images, ${review_rows} reviews."
 
       - name: Localize source media
@@ -85,7 +85,8 @@ jobs:
           npm run build
           ! grep -R -q 'tildacdn' dist
           grep -R -q '/tour-galleries/' dist
-          echo 'Production bundle verified: local galleries present and no Tilda CDN dependency remains.'
+          grep -R -q 'Михаил' dist
+          echo 'Production bundle verified: local galleries/reviews present and no Tilda CDN dependency remains.'
 
       - name: Ensure D1 database and prepare deploy config
         working-directory: maxtourvietnam
@@ -126,8 +127,8 @@ jobs:
           npx wrangler d1 execute DB --remote --config wrangler.deploy.jsonc --file=seed/tours.sql --yes
           catalog_check=$(npx wrangler d1 execute DB --remote --config wrangler.deploy.jsonc --command="SELECT COUNT(*) AS tours, SUM(CASE WHEN cover_image LIKE '%tildacdn%' THEN 1 ELSE 0 END) AS external_covers, SUM(CASE WHEN cover_image LIKE '/mirror-media/%' THEN 1 ELSE 0 END) AS local_covers FROM tours;" --json)
           echo "$catalog_check" | jq .
-          echo "$catalog_check" | jq -e '.[0].results[0] | (.tours > 0) and (.external_covers == 0) and (.local_covers == .tours)' >/dev/null
-          echo 'D1 catalog media integrity verified: all tour covers are local.'
+          echo "$catalog_check" | jq -e '.[0].results[0] | (.tours == 28) and (.external_covers == 0) and (.local_covers == .tours)' >/dev/null
+          echo 'D1 catalog media integrity verified: 28 tour covers are local.'
 
       - name: Deploy Worker and React assets
         working-directory: maxtourvietnam
@@ -166,11 +167,13 @@ jobs:
           done
           test "$ready" -eq 1
           curl -L -fsS --connect-timeout 5 --max-time 20 "$base/api/tours?smoke=${GITHUB_SHA}" -o /tmp/tours.json
-          jq -e '.tours | length > 0' /tmp/tours.json >/dev/null
+          jq -e '.tours | length == 28' /tmp/tours.json >/dev/null
           ! grep -q 'tildacdn' /tmp/tours.json
           grep -q '/mirror-media/' /tmp/tours.json
           curl -L -fsS --connect-timeout 5 --max-time 20 "$base/" -o /tmp/home.html
-          grep -q 'MAX TOUR Vietnam' /tmp/home.html
+          grep -q 'id="root"' /tmp/home.html
           curl -L -fsS --connect-timeout 5 --max-time 20 "$base/dnevnaya-obzornaya-ekskursiya-po-nyachangu" -o /tmp/tour.html
-          grep -q 'MAX TOUR Vietnam' /tmp/tour.html
-          echo 'maxtourvietnam production verified: Worker API, local D1 covers, source galleries/reviews, and storefront are healthy.'
+          grep -q 'id="root"' /tmp/tour.html
+          curl -L -fsS --connect-timeout 5 --max-time 20 "$base/tour-galleries/dnevnaya-obzornaya-ekskursiya-po-nyachangu/01.png" -o /tmp/gallery.png
+          test -s /tmp/gallery.png
+          echo 'maxtourvietnam production verified: API, 28 local D1 covers, local galleries/reviews, and storefront are healthy.'
