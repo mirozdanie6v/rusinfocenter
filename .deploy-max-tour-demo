@@ -1,5 +1,1 @@
-trigger=2026-09-14T10:30:00Z
-source=mirozdanie6v/MAX-TOUR@demo/max-tour-demo
-source_commit=fdcdf567766a0efe5778bfdb071f187317e65216
-mode=standalone-v28-production-embed-center-tiles
-target=https://max-tour-demo.viiversion.com
+deploy max-tour-demo 2026-09-14 filter-press-feedback-v1
