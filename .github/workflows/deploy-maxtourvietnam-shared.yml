@@ -88,7 +88,10 @@ jobs:
         run: |
           set -euo pipefail
           npx wrangler d1 execute DB --remote --config wrangler.deploy.jsonc --file=seed/tours.sql --yes
-          npx wrangler d1 execute DB --remote --config wrangler.deploy.jsonc --command='SELECT COUNT(*) AS tours FROM tours;' --json
+          catalog_check=$(npx wrangler d1 execute DB --remote --config wrangler.deploy.jsonc --command="SELECT COUNT(*) AS tours, SUM(CASE WHEN cover_image LIKE '%tildacdn%' THEN 1 ELSE 0 END) AS external_covers, SUM(CASE WHEN cover_image LIKE '/mirror-media/%' THEN 1 ELSE 0 END) AS local_covers FROM tours;" --json)
+          echo "$catalog_check" | jq .
+          echo "$catalog_check" | jq -e '.[0].results[0] | (.tours > 0) and (.external_covers == 0) and (.local_covers == .tours)' >/dev/null
+          echo 'D1 catalog media integrity verified: all tour covers are local.'
 
       - name: Deploy Worker and React assets
         working-directory: maxtourvietnam
@@ -118,7 +121,7 @@ jobs:
           base="https://${TARGET_DOMAIN}"
           ready=0
           for attempt in $(seq 1 30); do
-            code=$(curl -L -sS --connect-timeout 5 --max-time 15 -o /tmp/health.json -w '%{http_code}' "$base/api/health" || true)
+            code=$(curl -L -sS --connect-timeout 5 --max-time 15 -o /tmp/health.json -w '%{http_code}' "$base/api/health?smoke=${GITHUB_SHA}" || true)
             if [ "$code" = "200" ] && jq -e '.ok == true and .project == "maxtourvietnam"' /tmp/health.json >/dev/null 2>&1; then
               ready=1
               break
@@ -126,6 +129,10 @@ jobs:
             sleep 5
           done
           test "$ready" -eq 1
+          curl -L -fsS --connect-timeout 5 --max-time 20 "$base/api/tours?smoke=${GITHUB_SHA}" -o /tmp/tours.json
+          jq -e '.tours | length > 0' /tmp/tours.json >/dev/null
+          ! grep -q 'tildacdn' /tmp/tours.json
+          grep -q '/mirror-media/' /tmp/tours.json
           curl -L -fsS --connect-timeout 5 --max-time 20 "$base/" -o /tmp/home.html
           grep -q 'MAX TOUR Vietnam' /tmp/home.html
-          echo 'maxtourvietnam production verified.'
+          echo 'maxtourvietnam production verified: Worker API, local D1 covers, and storefront are healthy.'
