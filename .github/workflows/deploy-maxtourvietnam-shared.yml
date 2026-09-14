@@ -50,6 +50,21 @@ jobs:
           set -euo pipefail
           npm install --no-audit --no-fund
 
+      - name: Sync source galleries and reviews
+        working-directory: maxtourvietnam
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run sync:galleries
+          npm run sync:reviews
+          test -s src/client/generatedGalleries.ts
+          test -s src/client/generatedReviews.ts
+          gallery_refs=$(grep -o '/tour-galleries/' src/client/generatedGalleries.ts | wc -l)
+          review_rows=$(grep -o '"name"' src/client/generatedReviews.ts | wc -l)
+          test "$gallery_refs" -gt 0
+          test "$review_rows" -gt 0
+          echo "Source parity generated: ${gallery_refs} gallery images, ${review_rows} reviews."
+
       - name: Localize source media
         working-directory: maxtourvietnam
         shell: bash
@@ -69,7 +84,8 @@ jobs:
           set -euo pipefail
           npm run build
           ! grep -R -q 'tildacdn' dist
-          echo 'Production bundle verified: no Tilda CDN dependency remains.'
+          grep -R -q '/tour-galleries/' dist
+          echo 'Production bundle verified: local galleries present and no Tilda CDN dependency remains.'
 
       - name: Ensure D1 database and prepare deploy config
         working-directory: maxtourvietnam
@@ -155,4 +171,6 @@ jobs:
           grep -q '/mirror-media/' /tmp/tours.json
           curl -L -fsS --connect-timeout 5 --max-time 20 "$base/" -o /tmp/home.html
           grep -q 'MAX TOUR Vietnam' /tmp/home.html
-          echo 'maxtourvietnam production verified: Worker API, local D1 covers, and storefront are healthy.'
+          curl -L -fsS --connect-timeout 5 --max-time 20 "$base/dnevnaya-obzornaya-ekskursiya-po-nyachangu" -o /tmp/tour.html
+          grep -q 'MAX TOUR Vietnam' /tmp/tour.html
+          echo 'maxtourvietnam production verified: Worker API, local D1 covers, source galleries/reviews, and storefront are healthy.'
