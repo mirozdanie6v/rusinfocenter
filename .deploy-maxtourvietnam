@@ -1,5 +1,5 @@
-trigger=2026-09-15-source-page-order-hero-footer-v3
+trigger=2026-09-15-exact-tour-zero-blocks-v1
 source=mirozdanie6v/maxtourvietnam@main
 domain=maxtourvietnam.viiversion.com
-revision=e4e4a9af79eed7ee238677875f741e45b977bd50
-runner=225cf2c97b8b0128cbe5849c3f98def07e202dbd
+revision=2a67074a9f7855d1396632633ab01ccaec3c9d2e
+runner=5e659d0b2b3ba1406a7605d81444d6cceb0278d9
