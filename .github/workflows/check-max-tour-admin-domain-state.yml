@@ -1,0 +1,36 @@
+name: Check MAX TOUR Admin Domain State
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/check-max-tour-admin-domain-state.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      VIIVERSION_ZONE_ID: 56fa9423ef85e05559f453af43ec400f
+      HOST: max-tour-demo-admin.viiversion.com
+    steps:
+      - name: Inspect Cloudflare worker-domain and DNS state
+        shell: bash
+        run: |
+          set -euo pipefail
+          domains=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains" \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            -H 'Content-Type: application/json')
+          echo "$domains" | jq -c --arg host "$HOST" '{success, domain: (.result[]? | select(.hostname == $host) | {id, hostname, service, environment, zone_id, zone_name})}'
+          dns=$(curl -fsS "https://api.cloudflare.com/client/v4/zones/${VIIVERSION_ZONE_ID}/dns_records?name=${HOST}" \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            -H 'Content-Type: application/json' || true)
+          if [ -n "$dns" ]; then
+            echo "$dns" | jq -c '{success, records: [.result[]? | {id,type,name,content,proxied,proxiable}]}'
+          fi
