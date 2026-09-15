@@ -1,5 +1,5 @@
-trigger=2026-09-15-homepage-source-parity-v4
+trigger=2026-09-15-hero-rollback-v3
 source=mirozdanie6v/maxtourvietnam@main
 domain=maxtourvietnam.viiversion.com
-revision=ca29f2a22448692e564f6d183232970c0cf008a2
+revision=c8e61c5970fc71b3d16dffd21c59911f18a560e7
 runner=shared-rusinfocenter
