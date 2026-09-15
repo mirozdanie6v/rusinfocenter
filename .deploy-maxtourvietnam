@@ -1,5 +1,5 @@
-trigger=2026-09-15-restore-original-slider-image
+trigger=2026-09-15-replace-brand-image
 source=mirozdanie6v/maxtourvietnam@main
 domain=maxtourvietnam.viiversion.com
-revision=43b704a99c82b0fd0efad73c50724c8d5f950dd6
+revision=8422b1120904eb8bd5fc73a6bb73efb48648dfb4
 runner=shared-rusinfocenter
