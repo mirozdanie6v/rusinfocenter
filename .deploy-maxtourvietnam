@@ -1,5 +1,5 @@
-trigger=2026-09-15-replace-brand-image
+trigger=2026-09-15-original-max-tour-hero
 source=mirozdanie6v/maxtourvietnam@main
 domain=maxtourvietnam.viiversion.com
-revision=8422b1120904eb8bd5fc73a6bb73efb48648dfb4
+revision=02d29cfa255fb9085fd192cde329f4086723e45a
 runner=shared-rusinfocenter
