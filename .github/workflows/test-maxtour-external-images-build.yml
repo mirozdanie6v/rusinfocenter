@@ -30,13 +30,12 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 22
-          cache: npm
 
       - name: Build source without mirror sync
         shell: bash
         run: |
           set -euo pipefail
-          npm ci
+          npm install
           npm run build
           test -f dist/index.html
           bundle=$(find dist/assets -type f -name '*.js' | head -n 1)
