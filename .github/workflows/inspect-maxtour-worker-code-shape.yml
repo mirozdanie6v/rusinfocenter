@@ -1,0 +1,48 @@
+name: Inspect MAX TOUR Worker code shape
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.inspect-maxtour-worker-code-shape'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      SERVICE: maxtourvietnam
+    steps:
+      - name: Extract safe code landmarks only
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/services/${SERVICE}/environments/production/content"
+          curl -fsS -D /tmp/h -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" "$url" -o /tmp/body
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          h=Path('/tmp/h').read_text(errors='replace')
+          b=Path('/tmp/body').read_bytes()
+          boundary=re.search(r'boundary=([^;\r\n]+)',h,re.I).group(1).strip('"')
+          for p in b.split(('--'+boundary).encode()):
+              head,sep,data=p.partition(b'\r\n\r\n')
+              if b'name="index.js"' in head:
+                  Path('/tmp/index.js').write_bytes(data.rstrip(b'\r\n-'))
+                  break
+          s=Path('/tmp/index.js').read_text(errors='replace')
+          print('bytes',len(s))
+          for needle in ['withSourceMeta','ASSETS.fetch','/api/health','return withSourceMeta','sourceMeta']:
+              print('COUNT',needle,s.count(needle))
+              pos=s.find(needle)
+              if pos>=0:
+                  a=max(0,pos-350); z=min(len(s),pos+700)
+                  print('---',needle,'---')
+                  print(s[a:z])
+          PY
