@@ -1,0 +1,60 @@
+name: Inspect MAX TOUR demo code shape
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.inspect-max-tour-demo-code-shape'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      SERVICE: max-tour-demo-v28
+    steps:
+      - name: Extract safe module landmarks
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/services/${SERVICE}/environments/production/content"
+          curl -fsS -D /tmp/h -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" "$url" -o /tmp/body
+          python - <<'PY'
+          from pathlib import Path
+          import re,json
+          h=Path('/tmp/h').read_text(errors='replace')
+          b=Path('/tmp/body').read_bytes()
+          m=re.search(r'boundary=([^;\r\n]+)',h,re.I)
+          if not m: raise SystemExit('no boundary')
+          boundary=m.group(1).strip('"')
+          for i,p in enumerate(b.split(('--'+boundary).encode())):
+              p=p.strip(b'\r\n-')
+              if not p: continue
+              head,sep,data=p.partition(b'\r\n\r\n')
+              hs=head.decode('utf-8','replace')
+              print('PART',i,hs.replace('\r\n',' | '),'bytes',len(data))
+              if 'name="metadata"' in hs:
+                  try:
+                      obj=json.loads(data.decode())
+                      safe={k:obj.get(k) for k in ('main_module','body_part','compatibility_date','compatibility_flags','keep_assets') if k in obj}
+                      safe['binding_types']=[{'name':x.get('name'),'type':x.get('type')} for x in obj.get('bindings',[])]
+                      print('METADATA',json.dumps(safe,ensure_ascii=False))
+                  except Exception as e: print('metadata error',e)
+              if ('application/javascript' in hs or 'javascript+module' in hs) and 'metadata' not in hs:
+                  Path('/tmp/module.js').write_bytes(data)
+          s=Path('/tmp/module.js').read_text(errors='replace')
+          print('MODULE_BYTES',len(s))
+          needles=['ASSETS.fetch','content-type','text/html','Response(','fetch(request','TOUR_MEDIA','/api/']
+          for n in needles:
+              print('COUNT',n,s.count(n))
+              pos=s.find(n)
+              if pos>=0:
+                  print('---',n,'---')
+                  print(s[max(0,pos-500):min(len(s),pos+1200)])
+          PY
