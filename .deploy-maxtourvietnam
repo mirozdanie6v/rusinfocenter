@@ -1,5 +1,5 @@
-trigger=2026-09-15-hero-rollback-v3
+trigger=2026-09-15-restore-original-slider-image
 source=mirozdanie6v/maxtourvietnam@main
 domain=maxtourvietnam.viiversion.com
-revision=c8e61c5970fc71b3d16dffd21c59911f18a560e7
+revision=43b704a99c82b0fd0efad73c50724c8d5f950dd6
 runner=shared-rusinfocenter
