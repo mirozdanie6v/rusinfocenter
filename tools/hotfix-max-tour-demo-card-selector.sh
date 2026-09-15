@@ -75,14 +75,18 @@ verify() {
     sleep 2
   done
   test "$ok" -eq 1 || return 1
+
   curl -L -fsS "${TARGET}/api/health?card_selector=${GITHUB_SHA:-manual}" -o /tmp/health.json || return 1
   jq -e '.ok == true' /tmp/health.json >/dev/null || return 1
+
   curl -fsS -H "$auth" "$settings_url" -o /tmp/settings-after.json || return 1
   jq -r '.result.bindings[]?.name' /tmp/settings-after.json | sort > /tmp/bindings-after.txt
   diff -u /tmp/bindings-before.txt /tmp/bindings-after.txt || return 1
-  curl -L -fsS "${TARGET}/catalog.v28.json?card_selector=${GITHUB_SHA:-manual}" -o /tmp/catalog.json || return 1
-  jq -e '[.[] | select(.title=="Остров Орхидей и Остров Обезьян")] | length >= 1' /tmp/catalog.json >/dev/null || return 1
-  jq -e '[.[] | select(.title=="Остров Хон Там")] | length >= 1' /tmp/catalog.json >/dev/null || return 1
+
+  # These two tours are runtime customTours from D1/bootstrap, not entries in catalog.v28.json.
+  curl -L -fsS "${TARGET}/api/bootstrap?card_selector=${GITHUB_SHA:-manual}" -o /tmp/bootstrap.json || return 1
+  jq -e '[.. | objects | select(.title? == "Остров Орхидей и Остров Обезьян")] | length >= 1' /tmp/bootstrap.json >/dev/null || return 1
+  jq -e '[.. | objects | select(.title? == "Остров Хон Там")] | length >= 1' /tmp/bootstrap.json >/dev/null || return 1
 }
 
 if ! upload_module /tmp/patched-worker-r2.js /tmp/upload.json; then
@@ -95,4 +99,4 @@ if ! verify; then
   exit 1
 fi
 
-echo 'DEPLOY PASS: photo fix now covers both tour-card and wide-card catalog cards; bindings and API verified.'
+echo 'DEPLOY PASS: photo fix now covers both tour-card and wide-card catalog cards; D1 bootstrap, bindings and API verified.'
