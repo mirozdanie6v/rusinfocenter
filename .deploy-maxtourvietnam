@@ -1,5 +1,5 @@
-trigger=2026-09-15-desktop-zero-block-overlap-fix-retry
+trigger=2026-09-15-homepage-source-parity-v3
 source=mirozdanie6v/maxtourvietnam@main
 domain=maxtourvietnam.viiversion.com
-revision=3400279d20e8696b0268201daf8557f6a19e36e7
+revision=c8e61c5970fc71b3d16dffd21c59911f18a560e7
 runner=shared-rusinfocenter
