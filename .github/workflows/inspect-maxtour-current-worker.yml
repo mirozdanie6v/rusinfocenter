@@ -24,12 +24,9 @@ jobs:
         run: |
           set -euo pipefail
           auth=(-H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}")
-          echo '=== deployments ==='
-          curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/services/${SERVICE}/environments/production/deployments" "${auth[@]}" \
-            | jq '{success, errors, result: {id: .result.id, source: .result.source, strategy: .result.strategy, versions: [.result.versions[]? | {version_id, percentage}]}}'
           echo '=== service ==='
           curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/services/${SERVICE}" "${auth[@]}" \
             | jq '{success, errors, result: {id: .result.id, default_environment: .result.default_environment, created_on: .result.created_on, modified_on: .result.modified_on}}'
-          echo '=== production settings ==='
+          echo '=== production bindings ==='
           curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/services/${SERVICE}/environments/production/settings" "${auth[@]}" \
-            | jq '{success, errors, result: {compatibility_date: .result.compatibility_date, compatibility_flags: .result.compatibility_flags, bindings: [.result.bindings[]? | {name,type,namespace_id,bucket_name,service,environment}]}}'
+            | jq '{success, errors, compatibility_date: .result.compatibility_date, bindings: [.result.bindings[]? | if .type == "d1" then {name,type,id,database_id,namespace_id} elif .type == "assets" then {name,type} else {name,type} end]}'
