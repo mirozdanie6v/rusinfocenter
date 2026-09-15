@@ -1,5 +1,5 @@
-trigger=2026-09-15-zero-block-overlap-fix
+trigger=2026-09-15-production-deploy-shared-secrets
 source=mirozdanie6v/maxtourvietnam@main
 domain=maxtourvietnam.viiversion.com
-revision=e55923ae8b7d6fc7c77d3924e6e6db3152e1b480
-runner=5e659d0b2b3ba1406a7605d81444d6cceb0278d9
+revision=8ac761108bda47dd801181553e9c4689fef6bca0
+runner=shared-rusinfocenter
