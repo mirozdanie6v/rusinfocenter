@@ -1,0 +1,147 @@
+name: Deploy MAX TOUR hero proxy
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.deploy-maxtour-hero-proxy'
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CF_ZONE_ID: 56fa9423ef85e05559f453af43ec400f
+      CF_ZONE_NAME: viiversion.com
+      TARGET_DOMAIN: maxtourvietnam.viiversion.com
+      PROXY_NAME: maxtourvietnam-hero-proxy
+      UPSTREAM: https://maxtourvietnam.viiversion.workers.dev
+      HERO: https://static.tildacdn.one/tild3037-3338-4836-a362-336236666631/Max_Tour-4.jpg
+
+    steps:
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Verify credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
+
+      - name: Create hero-only proxy worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/maxtour-hero-proxy
+          cat > /tmp/maxtour-hero-proxy/worker.mjs <<'EOF'
+          const UPSTREAM = 'https://maxtourvietnam.viiversion.workers.dev';
+          const HERO = 'https://static.tildacdn.one/tild3037-3338-4836-a362-336236666631/Max_Tour-4.jpg';
+
+          function heroPatchScript() {
+            return `<script data-max-tour-hero-patch="1">(() => {
+              const HERO = ${JSON.stringify(HERO)};
+              const apply = () => {
+                const topHero = document.querySelector('.source-v3-hero-media img');
+                if (topHero && topHero.getAttribute('src') !== HERO) {
+                  topHero.setAttribute('src', HERO);
+                  topHero.removeAttribute('srcset');
+                }
+                const firstSlide = document.querySelector('.hero-slider .hero-slide');
+                if (firstSlide) firstSlide.style.backgroundImage = 'url("' + HERO + '")';
+              };
+              const start = () => {
+                apply();
+                new MutationObserver(apply).observe(document.documentElement, { childList: true, subtree: true });
+                setTimeout(apply, 50);
+                setTimeout(apply, 500);
+                setTimeout(apply, 1500);
+              };
+              if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
+              else start();
+            })();</script>`;
+          }
+
+          export default {
+            async fetch(request) {
+              const incoming = new URL(request.url);
+              const upstreamUrl = new URL(incoming.pathname + incoming.search, UPSTREAM);
+              const upstreamRequest = new Request(upstreamUrl, request);
+              const response = await fetch(upstreamRequest);
+
+              if (incoming.pathname !== '/') return response;
+              const contentType = response.headers.get('content-type') || '';
+              if (!contentType.includes('text/html')) return response;
+
+              let html = await response.text();
+              const patch = heroPatchScript();
+              html = html.includes('</body>') ? html.replace('</body>', `${patch}</body>`) : `${html}${patch}`;
+
+              const headers = new Headers(response.headers);
+              headers.delete('content-length');
+              headers.set('content-type', 'text/html; charset=utf-8');
+              headers.set('x-max-tour-hero-proxy', 'max-tour-4');
+              return new Response(html, {
+                status: response.status,
+                statusText: response.statusText,
+                headers,
+              });
+            },
+          };
+          EOF
+          cat > /tmp/maxtour-hero-proxy/wrangler.jsonc <<'EOF'
+          {
+            "name": "maxtourvietnam-hero-proxy",
+            "main": "worker.mjs",
+            "compatibility_date": "2026-09-15"
+          }
+          EOF
+
+      - name: Deploy proxy worker
+        working-directory: /tmp/maxtour-hero-proxy
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@latest deploy --config wrangler.jsonc
+
+      - name: Attach MAX TOUR domain to proxy
+        shell: bash
+        run: |
+          set -euo pipefail
+          response=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains" \
+            -X PUT \
+            -H 'Content-Type: application/json' \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            --data "{\"hostname\":\"${TARGET_DOMAIN}\",\"service\":\"${PROXY_NAME}\",\"zone_id\":\"${CF_ZONE_ID}\",\"zone_name\":\"${CF_ZONE_NAME}\"}")
+          echo "$response" | jq '{success,result:{hostname:.result.hostname,service:.result.service},errors}'
+          test "$(echo "$response" | jq -r '.success')" = "true"
+          test "$(echo "$response" | jq -r '.result.service')" = "$PROXY_NAME"
+
+      - name: Verify hero and preserved assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://${TARGET_DOMAIN}"
+          ready=0
+          for attempt in $(seq 1 20); do
+            if curl -L -fsS --connect-timeout 5 --max-time 20 "$base/?hero_proxy=${GITHUB_SHA}-${attempt}" -o /tmp/home.html; then
+              if grep -q 'data-max-tour-hero-patch="1"' /tmp/home.html; then ready=1; break; fi
+            fi
+            sleep 2
+          done
+          test "$ready" -eq 1
+          grep -q 'Max_Tour-4.jpg' /tmp/home.html
+          curl -L -fsS "$base/api/tours?hero_proxy=${GITHUB_SHA}" -o /tmp/tours.json
+          jq -e '.tours | length == 28' /tmp/tours.json >/dev/null
+          jq -e '[.tours[].cover_image] | all(. != null and . != "")' /tmp/tours.json >/dev/null
+          curl -L -fsS "$base/mirror-media/789cbd1e52fbe2bb96.png?hero_proxy=${GITHUB_SHA}" -o /tmp/card.png
+          test -s /tmp/card.png
+          echo 'MAX TOUR hero proxy live: only hero patched; catalog and existing image assets preserved.'
