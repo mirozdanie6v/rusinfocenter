@@ -48,8 +48,14 @@ jobs:
           EOF
           cd /tmp/cf-content-test
           npx --yes wrangler@latest deploy --config wrangler.jsonc
-          curl -L -fsS "https://${SERVICE}.viiversion.workers.dev/probe.txt?before=${GITHUB_SHA}" -o /tmp/before.txt
-          grep -qx 'asset-preserved-20260915' /tmp/before.txt
+          ready=0
+          for attempt in $(seq 1 30); do
+            if curl -L -fsS --connect-timeout 5 --max-time 15 "https://${SERVICE}.viiversion.workers.dev/probe.txt?before=${GITHUB_SHA}-${attempt}" -o /tmp/before.txt; then
+              if grep -qx 'asset-preserved-20260915' /tmp/before.txt; then ready=1; break; fi
+            fi
+            sleep 2
+          done
+          test "$ready" -eq 1
 
       - name: Update only Worker content through Cloudflare API
         shell: bash
@@ -77,10 +83,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          url="https://${SERVICE}.viiversion.workers.dev/probe.txt?after=${GITHUB_SHA}"
-          curl -L -fsS -D /tmp/after.headers "$url" -o /tmp/after.txt
-          grep -qx 'asset-preserved-20260915' /tmp/after.txt
-          grep -qi '^x-content-only-test: ok' /tmp/after.headers
+          ready=0
+          for attempt in $(seq 1 30); do
+            if curl -L -fsS -D /tmp/after.headers --connect-timeout 5 --max-time 15 "https://${SERVICE}.viiversion.workers.dev/probe.txt?after=${GITHUB_SHA}-${attempt}" -o /tmp/after.txt; then
+              if grep -qx 'asset-preserved-20260915' /tmp/after.txt && grep -qi '^x-content-only-test: ok' /tmp/after.headers; then ready=1; break; fi
+            fi
+            sleep 2
+          done
+          test "$ready" -eq 1
           echo 'PASS: content-only update preserved existing assets binding and asset content.'
 
       - name: Delete isolated test Worker
