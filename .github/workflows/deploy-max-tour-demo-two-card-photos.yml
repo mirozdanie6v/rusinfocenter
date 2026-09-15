@@ -20,6 +20,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-      - name: Apply guarded two-photo hotfix
+      - name: Extend photo fix to catalog cards
         shell: bash
-        run: bash tools/hotfix-max-tour-demo-two-photos.sh
+        run: bash tools/hotfix-max-tour-demo-card-selector.sh
