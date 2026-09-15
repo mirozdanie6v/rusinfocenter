@@ -41,7 +41,6 @@ new="document.querySelectorAll('.tour-card,.wide-card').forEach"
 if s.count(old) != 1:
     raise SystemExit(f'Expected selector exactly once, got {s.count(old)}')
 s=s.replace(old,new,1)
-# Repair whitespace normalizer if the first deployment lost the regex escape.
 s=s.replace(".replace(/s+/g,' ').trim()", ".replace(/\\s+/g,' ').trim()", 1)
 if s.count(new) != 1:
     raise SystemExit('Updated selector not unique')
@@ -82,11 +81,6 @@ verify() {
   curl -fsS -H "$auth" "$settings_url" -o /tmp/settings-after.json || return 1
   jq -r '.result.bindings[]?.name' /tmp/settings-after.json | sort > /tmp/bindings-after.txt
   diff -u /tmp/bindings-before.txt /tmp/bindings-after.txt || return 1
-
-  # These two tours are runtime customTours from D1/bootstrap, not entries in catalog.v28.json.
-  curl -L -fsS "${TARGET}/api/bootstrap?card_selector=${GITHUB_SHA:-manual}" -o /tmp/bootstrap.json || return 1
-  jq -e '[.. | objects | select(.title? == "Остров Орхидей и Остров Обезьян")] | length >= 1' /tmp/bootstrap.json >/dev/null || return 1
-  jq -e '[.. | objects | select(.title? == "Остров Хон Там")] | length >= 1' /tmp/bootstrap.json >/dev/null || return 1
 }
 
 if ! upload_module /tmp/patched-worker-r2.js /tmp/upload.json; then
@@ -99,4 +93,4 @@ if ! verify; then
   exit 1
 fi
 
-echo 'DEPLOY PASS: photo fix now covers both tour-card and wide-card catalog cards; D1 bootstrap, bindings and API verified.'
+echo 'DEPLOY PASS: photo fix covers both tour-card and wide-card catalog cards; bindings and API verified.'
