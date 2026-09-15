@@ -1,5 +1,5 @@
-trigger=2026-09-15-header-social-parity
+trigger=2026-09-15-homepage-section-order-parity
 source=mirozdanie6v/maxtourvietnam@main
 domain=maxtourvietnam.viiversion.com
-revision=7ce7ab78d4ba5e6ba6994d085b0b7aca934c5004
+revision=9457139bbb8b6ccb2aaa60acb7940478675d3515
 runner=5e659d0b2b3ba1406a7605d81444d6cceb0278d9
