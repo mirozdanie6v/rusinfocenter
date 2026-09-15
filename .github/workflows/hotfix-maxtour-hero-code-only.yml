@@ -1,0 +1,190 @@
+name: Safe MAX TOUR hero code-only hotfix
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.deploy-maxtour-hero-code-only'
+
+permissions:
+  contents: read
+
+jobs:
+  hotfix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      SERVICE: maxtourvietnam
+      TARGET: https://maxtourvietnam.viiversion.com
+      HERO: https://static.tildacdn.one/tild3037-3338-4836-a362-336236666631/Max_Tour-4.jpg
+      D1_ID: d0546bc9-b101-4e30-b9a9-b45a373aec6b
+
+    steps:
+      - name: Preflight production and record immutable asset hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
+
+          curl -L -fsS --connect-timeout 5 --max-time 20 "${TARGET}/?preflight=${GITHUB_SHA}" -o /tmp/pre-home.html
+          grep -q 'id="root"' /tmp/pre-home.html
+          curl -L -fsS --connect-timeout 5 --max-time 20 "${TARGET}/api/health?preflight=${GITHUB_SHA}" -o /tmp/pre-health.json
+          jq -e '.ok == true and .project == "maxtourvietnam"' /tmp/pre-health.json >/dev/null
+          curl -L -fsS --connect-timeout 5 --max-time 20 "${TARGET}/api/tours?preflight=${GITHUB_SHA}" -o /tmp/pre-tours.json
+          jq -e '.tours | length == 28' /tmp/pre-tours.json >/dev/null
+
+          curl -L -fsS --connect-timeout 5 --max-time 20 "$HERO" -o /tmp/max-tour-4.jpg
+          test "$(wc -c < /tmp/max-tour-4.jpg)" -gt 10000
+
+          : > /tmp/assets.before
+          for asset in \
+            /mirror-media/370dd828995262c5f6.jpg \
+            /mirror-media/789cbd1e52fbe2bb96.png \
+            /mirror-media/dbdd4c7c7a1a8b401d.png \
+            /mirror-media/b61ebe9d9d537cde4c.png \
+            /mirror-media/41a8eaf3295d53b2f3.png \
+            /mirror-media/979b9b42c26fa733e0.png \
+            /mirror-media/4428f3e199f4015673.png; do
+            out="/tmp/asset-$(echo "$asset" | tr '/.' '__')"
+            curl -L -fsS --connect-timeout 5 --max-time 20 "${TARGET}${asset}?preflight=${GITHUB_SHA}" -o "$out"
+            test -s "$out"
+            printf '%s %s %s\n' "$asset" "$(wc -c < "$out")" "$(sha256sum "$out" | awk '{print $1}')" >> /tmp/assets.before
+          done
+          cat /tmp/assets.before
+
+      - name: Back up current Worker module and prepare one-line-target patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          content_url="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/services/${SERVICE}/environments/production/content"
+          curl -fsS -D /tmp/current.headers \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            "$content_url" -o /tmp/current.multipart
+
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          headers=Path('/tmp/current.headers').read_text(errors='replace')
+          body=Path('/tmp/current.multipart').read_bytes()
+          m=re.search(r'boundary=([^;\r\n]+)',headers,re.I)
+          if not m: raise SystemExit('No multipart boundary in current Worker content')
+          boundary=m.group(1).strip('"')
+          module=None
+          for part in body.split(('--'+boundary).encode()):
+              head,sep,data=part.partition(b'\r\n\r\n')
+              if sep and b'name="index.js"' in head:
+                  module=data.rstrip(b'\r\n-')
+                  break
+          if not module: raise SystemExit('Current index.js module not found')
+          Path('/tmp/original-index.js').write_bytes(module)
+          src=module.decode('utf-8')
+          target='    return withSourceMeta(request, response);'
+          if src.count(target) != 1:
+              raise SystemExit(f'Unsafe patch target count: {src.count(target)}')
+          replacement=r'''    const page = await withSourceMeta(request, response);
+              if (url.pathname !== "/") return page;
+              const pageType = page.headers.get("content-type") || "";
+              if (!pageType.includes("text/html")) return page;
+              let pageHtml = await page.text();
+              const heroPatch = `<script data-max-tour-hero-patch="1">(()=>{const H="https://static.tildacdn.one/tild3037-3338-4836-a362-336236666631/Max_Tour-4.jpg";const apply=()=>{const img=document.querySelector('.source-v3-hero-media img');const first=document.querySelector('.hero-slider .hero-slide');if(img){img.setAttribute('src',H);img.removeAttribute('srcset')}if(first)first.style.backgroundImage='url("'+H+'")';return Boolean(img&&first)};if(apply())return;const obs=new MutationObserver(()=>{if(apply())obs.disconnect()});obs.observe(document.documentElement,{childList:true,subtree:true});setTimeout(()=>{if(apply())obs.disconnect()},100);setTimeout(()=>{if(apply())obs.disconnect()},1000)})();</script>`;
+              pageHtml = pageHtml.includes("</body>") ? pageHtml.replace("</body>", `${heroPatch}</body>`) : `${pageHtml}${heroPatch}`;
+              const pageHeaders = new Headers(page.headers);
+              pageHeaders.delete("content-length");
+              pageHeaders.set("content-type", "text/html; charset=utf-8");
+              pageHeaders.set("x-max-tour-hero", "max-tour-4");
+              return new Response(pageHtml, { status: page.status, statusText: page.statusText, headers: pageHeaders });'''
+          patched=src.replace(target,replacement)
+          if patched.count('data-max-tour-hero-patch="1"') != 1:
+              raise SystemExit('Hero marker not unique after patch')
+          if patched.count('Max_Tour-4.jpg') != 1:
+              raise SystemExit('Hero URL not unique after patch')
+          Path('/tmp/patched-index.js').write_text(patched)
+          print('original bytes',len(src),'patched bytes',len(patched))
+          PY
+
+          node --check /tmp/original-index.js
+          node --check /tmp/patched-index.js
+          grep -q 'data-max-tour-hero-patch="1"' /tmp/patched-index.js
+
+      - name: Upload code only, verify, and rollback automatically on any regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          upload_url="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${SERVICE}"
+          metadata="{\"main_module\":\"index.js\",\"compatibility_date\":\"2026-09-14\",\"keep_assets\":true,\"bindings\":[{\"type\":\"assets\",\"name\":\"ASSETS\"},{\"type\":\"d1\",\"name\":\"DB\",\"id\":\"${D1_ID}\"}]}"
+
+          upload_module() {
+            local file="$1"
+            local response="$2"
+            local code
+            code=$(curl -sS -X PUT \
+              -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+              -F "metadata=${metadata};type=application/json" \
+              -F "index.js=@${file};filename=index.js;type=application/javascript+module" \
+              "$upload_url" -o "$response" -w '%{http_code}')
+            echo "Worker upload HTTP ${code}"
+            jq '{success,errors,messages}' "$response" || cat "$response"
+            test "$code" = "200"
+            test "$(jq -r '.success' "$response")" = "true"
+          }
+
+          verify_assets() {
+            local suffix="$1"
+            : > /tmp/assets.after
+            while read -r asset before_size before_hash; do
+              out="/tmp/check-$(echo "$asset" | tr '/.' '__')"
+              curl -L -fsS --connect-timeout 5 --max-time 20 "${TARGET}${asset}?${suffix}" -o "$out" || return 1
+              after_size=$(wc -c < "$out")
+              after_hash=$(sha256sum "$out" | awk '{print $1}')
+              printf '%s %s %s\n' "$asset" "$after_size" "$after_hash" >> /tmp/assets.after
+              test "$after_size" = "$before_size" || return 1
+              test "$after_hash" = "$before_hash" || return 1
+            done < /tmp/assets.before
+          }
+
+          verify_patched() {
+            local ok=0
+            for attempt in $(seq 1 20); do
+              if curl -L -fsS --connect-timeout 5 --max-time 20 "${TARGET}/?hero_safe=${GITHUB_SHA}-${attempt}" -o /tmp/live-home.html; then
+                if grep -q 'data-max-tour-hero-patch="1"' /tmp/live-home.html && grep -q 'Max_Tour-4.jpg' /tmp/live-home.html; then ok=1; break; fi
+              fi
+              sleep 2
+            done
+            test "$ok" -eq 1 || return 1
+            curl -L -fsS --connect-timeout 5 --max-time 20 "${TARGET}/api/health?hero_safe=${GITHUB_SHA}" -o /tmp/live-health.json || return 1
+            jq -e '.ok == true and .project == "maxtourvietnam"' /tmp/live-health.json >/dev/null || return 1
+            curl -L -fsS --connect-timeout 5 --max-time 20 "${TARGET}/api/tours?hero_safe=${GITHUB_SHA}" -o /tmp/live-tours.json || return 1
+            jq -e '.tours | length == 28' /tmp/live-tours.json >/dev/null || return 1
+            verify_assets "hero_safe=${GITHUB_SHA}" || return 1
+          }
+
+          verify_rollback() {
+            local ok=0
+            for attempt in $(seq 1 20); do
+              if curl -L -fsS --connect-timeout 5 --max-time 20 "${TARGET}/?rollback=${GITHUB_SHA}-${attempt}" -o /tmp/rollback-home.html; then
+                if grep -q 'id="root"' /tmp/rollback-home.html; then ok=1; break; fi
+              fi
+              sleep 2
+            done
+            test "$ok" -eq 1 || return 1
+            curl -L -fsS --connect-timeout 5 --max-time 20 "${TARGET}/api/tours?rollback=${GITHUB_SHA}" -o /tmp/rollback-tours.json || return 1
+            jq -e '.tours | length == 28' /tmp/rollback-tours.json >/dev/null || return 1
+            verify_assets "rollback=${GITHUB_SHA}" || return 1
+          }
+
+          upload_module /tmp/patched-index.js /tmp/upload-patched.json
+
+          if ! verify_patched; then
+            echo 'Verification failed. Restoring original Worker module immediately.' >&2
+            upload_module /tmp/original-index.js /tmp/upload-rollback.json
+            verify_rollback
+            echo 'Rollback completed and verified.' >&2
+            exit 1
+          fi
+
+          echo 'SAFE HOTFIX VERIFIED: Worker code updated, D1 works, 28 tours present, and all sampled static assets are byte-identical.'
+          cat /tmp/assets.after
