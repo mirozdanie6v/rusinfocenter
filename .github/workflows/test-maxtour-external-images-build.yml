@@ -1,0 +1,128 @@
+name: Test MAX TOUR external-image build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.test-maxtour-external-images-build'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      D1_ID: d0546bc9-b101-4e30-b9a9-b45a373aec6b
+      PREVIEW: maxtourvietnam-images-preview
+    steps:
+      - name: Checkout MAX TOUR source
+        uses: actions/checkout@v5
+        with:
+          repository: mirozdanie6v/maxtourvietnam
+          ref: main
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Build source without mirror sync
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build
+          test -f dist/index.html
+          bundle=$(find dist/assets -type f -name '*.js' | head -n 1)
+          echo "bundle=$bundle"
+          grep -q 'static.tildacdn' "$bundle"
+          if grep -q '/mirror-media/' "$bundle"; then
+            echo 'Unexpected mirror-media references in clean build' >&2
+            exit 1
+          fi
+          echo 'CLEAN BUILD PASS: runtime images use original Tilda URLs.'
+
+      - name: Validate source image URLs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          text='\n'.join([
+              Path('src/client/data.ts').read_text(),
+              Path('src/client/homepage-source-v3.ts').read_text(),
+          ])
+          urls=sorted(set(re.findall(r"https://static\.tildacdn\.(?:one|net)/[^'\"`\s]+", text)))
+          Path('/tmp/image-urls.txt').write_text('\n'.join(urls)+'\n')
+          print('source image urls', len(urls))
+          if len(urls) < 30:
+              raise SystemExit('Too few source image URLs found')
+          PY
+          failures=0
+          while IFS= read -r url; do
+            code=$(curl -L -sS --connect-timeout 5 --max-time 20 -o /tmp/img -w '%{http_code}' "$url" || true)
+            size=$(wc -c < /tmp/img 2>/dev/null || echo 0)
+            if [ "$code" != "200" ] || [ "$size" -lt 1000 ]; then
+              echo "BAD $code $size $url"
+              failures=$((failures+1))
+            fi
+          done < /tmp/image-urls.txt
+          echo "image-url failures=$failures"
+          test "$failures" -eq 0
+
+      - name: Deploy isolated preview with same D1
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/wrangler.preview.jsonc <<EOF
+          {
+            "name": "${PREVIEW}",
+            "main": "${GITHUB_WORKSPACE}/src/worker/index.ts",
+            "compatibility_date": "2026-09-14",
+            "workers_dev": true,
+            "assets": {
+              "directory": "${GITHUB_WORKSPACE}/dist",
+              "binding": "ASSETS",
+              "not_found_handling": "single-page-application",
+              "run_worker_first": ["/api/*"]
+            },
+            "d1_databases": [{
+              "binding": "DB",
+              "database_name": "maxtourvietnam",
+              "database_id": "${D1_ID}"
+            }]
+          }
+          EOF
+          npx wrangler deploy --config /tmp/wrangler.preview.jsonc
+
+      - name: Verify preview
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://${PREVIEW}.viiversion.workers.dev"
+          ok=0
+          for attempt in $(seq 1 30); do
+            if curl -L -fsS "$base/?x=$attempt" -o /tmp/home && grep -q 'id="root"' /tmp/home; then ok=1; break; fi
+            sleep 2
+          done
+          test "$ok" -eq 1
+          curl -L -fsS "$base/api/health" -o /tmp/health
+          jq -e '.ok == true and .project == "maxtourvietnam"' /tmp/health >/dev/null
+          curl -L -fsS "$base/api/tours" -o /tmp/tours
+          jq -e '.tours | length == 28' /tmp/tours >/dev/null
+          echo "PREVIEW PASS $base"
+
+      - name: Delete preview
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          npx wrangler delete --name "$PREVIEW" --force
+          exit 0
