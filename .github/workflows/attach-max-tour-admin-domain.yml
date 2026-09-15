@@ -1,0 +1,67 @@
+name: Attach MAX TOUR Admin Domain
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.deploy-max-tour-demo'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  attach-admin-domain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      VIIVERSION_ZONE_ID: 56fa9423ef85e05559f453af43ec400f
+      MAX_TOUR_SERVICE: max-tour-demo-v28
+      MAX_TOUR_MAIN_HOST: max-tour-demo.viiversion.com
+      MAX_TOUR_ADMIN_HOST: max-tour-demo-admin.viiversion.com
+
+    steps:
+      - name: Attach dedicated admin custom domain
+        shell: bash
+        run: |
+          set -euo pipefail
+          response=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains" \
+            -X PUT \
+            -H 'Content-Type: application/json' \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            --data "{\"hostname\":\"${MAX_TOUR_ADMIN_HOST}\",\"service\":\"${MAX_TOUR_SERVICE}\",\"zone_id\":\"${VIIVERSION_ZONE_ID}\",\"zone_name\":\"viiversion.com\"}")
+          test "$(echo "$response" | jq -r '.success')" = "true"
+          test "$(echo "$response" | jq -r '.result.hostname')" = "$MAX_TOUR_ADMIN_HOST"
+          test "$(echo "$response" | jq -r '.result.service')" = "$MAX_TOUR_SERVICE"
+
+      - name: Verify isolated admin host and preserved Mini App access
+        shell: bash
+        run: |
+          set -euo pipefail
+          admin_base="https://${MAX_TOUR_ADMIN_HOST}"
+          main_base="https://${MAX_TOUR_MAIN_HOST}"
+          ok=0
+          for attempt in $(seq 1 36); do
+            root_code=$(curl -sS --connect-timeout 5 --max-time 20 -o /tmp/admin-root.html -w '%{http_code}' "$admin_base/" || true)
+            admin_code=$(curl -L -sS --connect-timeout 5 --max-time 20 -o /tmp/admin.html -w '%{http_code}' "$admin_base/admin/?deploy=${GITHUB_SHA}" || true)
+            director_code=$(curl -L -sS --connect-timeout 5 --max-time 20 -o /tmp/director.html -w '%{http_code}' "$admin_base/director/?deploy=${GITHUB_SHA}" || true)
+            blocked_code=$(curl -sS --connect-timeout 5 --max-time 20 -o /tmp/blocked.html -w '%{http_code}' "$admin_base/tour/dalat-premium?deploy=${GITHUB_SHA}" || true)
+            main_home=$(curl -L -sS --connect-timeout 5 --max-time 20 -o /tmp/main-home.html -w '%{http_code}' "$main_base/?deploy=${GITHUB_SHA}" || true)
+            main_admin=$(curl -L -sS --connect-timeout 5 --max-time 20 -o /tmp/main-admin.html -w '%{http_code}' "$main_base/admin/?deploy=${GITHUB_SHA}" || true)
+            main_director=$(curl -L -sS --connect-timeout 5 --max-time 20 -o /tmp/main-director.html -w '%{http_code}' "$main_base/director/?deploy=${GITHUB_SHA}" || true)
+
+            if [ "$root_code" = "302" ] && [ "$admin_code" = "200" ] && [ "$director_code" = "200" ] && [ "$blocked_code" = "404" ] && \
+               [ "$main_home" = "200" ] && [ "$main_admin" = "200" ] && [ "$main_director" = "200" ] && \
+               grep -Fq '/max-tour-logo.svg' /tmp/admin.html && \
+               grep -Fq 'maxtourDirectorDrafts' /tmp/director.html && \
+               grep -Fq 'MaxTour Mini App Prototype v28' /tmp/main-home.html; then
+              ok=1
+              break
+            fi
+            sleep 5
+          done
+          test "$ok" -eq 1
+          echo "Verified dedicated admin/director host; client Mini App remains available only on the main host and legacy panel paths are preserved there."
