@@ -1,0 +1,118 @@
+name: Test MAX TOUR code-only method with D1
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.test-maxtour-code-only-d1'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      SERVICE: maxtour-d1-binding-test
+      D1_ID: d0546bc9-b101-4e30-b9a9-b45a373aec6b
+    steps:
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Deploy isolated Worker with assets and read-only D1 binding
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/d1test/public
+          printf 'asset-d1-preserved-20260915\n' > /tmp/d1test/public/probe.txt
+          cat > /tmp/d1test/index.js <<'EOF'
+          export default {
+            async fetch(request, env) {
+              const u = new URL(request.url);
+              if (u.pathname === '/dbprobe') {
+                const row = await env.DB.prepare('SELECT 1 AS n').first();
+                return Response.json({ ok: row?.n === 1 });
+              }
+              return env.ASSETS.fetch(request);
+            }
+          };
+          EOF
+          cat > /tmp/d1test/wrangler.jsonc <<EOF
+          {
+            "name": "${SERVICE}",
+            "main": "index.js",
+            "compatibility_date": "2026-09-14",
+            "workers_dev": true,
+            "assets": {"directory":"./public","binding":"ASSETS","run_worker_first":true},
+            "d1_databases": [{"binding":"DB","database_name":"maxtourvietnam","database_id":"${D1_ID}"}]
+          }
+          EOF
+          cd /tmp/d1test
+          npx --yes wrangler@latest deploy --config wrangler.jsonc
+          ready=0
+          for attempt in $(seq 1 30); do
+            if curl -L -fsS "https://${SERVICE}.viiversion.workers.dev/probe.txt?x=${attempt}" -o /tmp/probe && \
+               curl -L -fsS "https://${SERVICE}.viiversion.workers.dev/dbprobe?x=${attempt}" -o /tmp/db; then
+              if grep -qx 'asset-d1-preserved-20260915' /tmp/probe && jq -e '.ok == true' /tmp/db >/dev/null; then ready=1; break; fi
+            fi
+            sleep 2
+          done
+          test "$ready" -eq 1
+
+      - name: Perform exact production-style keep_assets plus D1 module update
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/updated.js <<'EOF'
+          export default {
+            async fetch(request, env) {
+              const u = new URL(request.url);
+              if (u.pathname === '/dbprobe') {
+                const row = await env.DB.prepare('SELECT 1 AS n').first();
+                return Response.json({ ok: row?.n === 1, updated: true });
+              }
+              const r = await env.ASSETS.fetch(request);
+              const h = new Headers(r.headers); h.set('x-code-only-d1-test','ok');
+              return new Response(r.body,{status:r.status,statusText:r.statusText,headers:h});
+            }
+          };
+          EOF
+          metadata="{\"main_module\":\"index.js\",\"compatibility_date\":\"2026-09-14\",\"keep_assets\":true,\"bindings\":[{\"type\":\"assets\",\"name\":\"ASSETS\"},{\"type\":\"d1\",\"name\":\"DB\",\"database_id\":\"${D1_ID}\"}]}"
+          url="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${SERVICE}"
+          code=$(curl -sS -X PUT -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            -F "metadata=${metadata};type=application/json" \
+            -F 'index.js=@/tmp/updated.js;filename=index.js;type=application/javascript+module' \
+            "$url" -o /tmp/update.json -w '%{http_code}')
+          echo "HTTP $code"
+          jq '{success,errors,messages}' /tmp/update.json
+          test "$code" = "200"
+          test "$(jq -r '.success' /tmp/update.json)" = "true"
+
+      - name: Verify both D1 and asset binding survived unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          ready=0
+          for attempt in $(seq 1 30); do
+            if curl -L -fsS -D /tmp/h "https://${SERVICE}.viiversion.workers.dev/probe.txt?after=${attempt}" -o /tmp/probe && \
+               curl -L -fsS "https://${SERVICE}.viiversion.workers.dev/dbprobe?after=${attempt}" -o /tmp/db; then
+              if grep -qx 'asset-d1-preserved-20260915' /tmp/probe && grep -qi '^x-code-only-d1-test: ok' /tmp/h && jq -e '.ok == true and .updated == true' /tmp/db >/dev/null; then ready=1; break; fi
+            fi
+            sleep 2
+          done
+          test "$ready" -eq 1
+          echo 'PASS: keep_assets + explicit D1 database_id preserves both bindings.'
+
+      - name: Delete isolated test Worker
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          npx --yes wrangler@latest delete --name "${SERVICE}" --force
+          exit 0
