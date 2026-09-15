@@ -45,16 +45,20 @@ jobs:
           admin_base="https://${MAX_TOUR_ADMIN_HOST}"
           main_base="https://${MAX_TOUR_MAIN_HOST}"
           ok=0
+
           for attempt in $(seq 1 120); do
-            if ! getent ahosts "$MAX_TOUR_ADMIN_HOST" >/dev/null 2>&1; then
+            dns_json=$(curl -fsS -H 'accept: application/dns-json' "https://cloudflare-dns.com/dns-query?name=${MAX_TOUR_ADMIN_HOST}&type=A" || true)
+            admin_ip=$(printf '%s' "$dns_json" | jq -r '.Answer[]? | select(.type == 1) | .data' 2>/dev/null | head -n1)
+            if [ -z "$admin_ip" ] || [ "$admin_ip" = "null" ]; then
               sleep 5
               continue
             fi
 
-            root_code=$(curl -sS --connect-timeout 5 --max-time 20 -o /tmp/admin-root.html -w '%{http_code}' "$admin_base/" || true)
-            admin_code=$(curl -L -sS --connect-timeout 5 --max-time 20 -o /tmp/admin.html -w '%{http_code}' "$admin_base/admin/?deploy=${GITHUB_SHA}" || true)
-            director_code=$(curl -L -sS --connect-timeout 5 --max-time 20 -o /tmp/director.html -w '%{http_code}' "$admin_base/director/?deploy=${GITHUB_SHA}" || true)
-            blocked_code=$(curl -sS --connect-timeout 5 --max-time 20 -o /tmp/blocked.html -w '%{http_code}' "$admin_base/tour/dalat-premium?deploy=${GITHUB_SHA}" || true)
+            resolve_arg="${MAX_TOUR_ADMIN_HOST}:443:${admin_ip}"
+            root_code=$(curl --resolve "$resolve_arg" -sS --connect-timeout 5 --max-time 20 -o /tmp/admin-root.html -w '%{http_code}' "$admin_base/" || true)
+            admin_code=$(curl --resolve "$resolve_arg" -L -sS --connect-timeout 5 --max-time 20 -o /tmp/admin.html -w '%{http_code}' "$admin_base/admin/?deploy=${GITHUB_SHA}" || true)
+            director_code=$(curl --resolve "$resolve_arg" -L -sS --connect-timeout 5 --max-time 20 -o /tmp/director.html -w '%{http_code}' "$admin_base/director/?deploy=${GITHUB_SHA}" || true)
+            blocked_code=$(curl --resolve "$resolve_arg" -sS --connect-timeout 5 --max-time 20 -o /tmp/blocked.html -w '%{http_code}' "$admin_base/tour/dalat-premium?deploy=${GITHUB_SHA}" || true)
             main_home=$(curl -L -sS --connect-timeout 5 --max-time 20 -o /tmp/main-home.html -w '%{http_code}' "$main_base/?deploy=${GITHUB_SHA}" || true)
             main_admin=$(curl -L -sS --connect-timeout 5 --max-time 20 -o /tmp/main-admin.html -w '%{http_code}' "$main_base/admin/?deploy=${GITHUB_SHA}" || true)
             main_director=$(curl -L -sS --connect-timeout 5 --max-time 20 -o /tmp/main-director.html -w '%{http_code}' "$main_base/director/?deploy=${GITHUB_SHA}" || true)
@@ -69,5 +73,6 @@ jobs:
             fi
             sleep 5
           done
+
           test "$ok" -eq 1
           echo "Verified dedicated admin/director host; client Mini App is blocked on the admin host and legacy panel paths remain available on the main Mini App host."
