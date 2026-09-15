@@ -57,7 +57,7 @@ jobs:
           done
           test "$ready" -eq 1
 
-      - name: Update only Worker content through Cloudflare API
+      - name: Update Worker module while keeping existing assets
         shell: bash
         run: |
           set -euo pipefail
@@ -71,15 +71,17 @@ jobs:
             }
           };
           EOF
-          url="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/services/${SERVICE}/environments/production/content"
-          curl -fsS -X PUT \
+          metadata='{"main_module":"index.js","compatibility_date":"2026-09-15","keep_assets":true,"bindings":[{"type":"assets","name":"ASSETS"}]}'
+          url="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${SERVICE}"
+          curl --fail-with-body -sS -X PUT \
             -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            -F "metadata=${metadata};type=application/json" \
             -F 'index.js=@/tmp/new-index.js;type=application/javascript+module' \
             "$url" -o /tmp/update.json
           cat /tmp/update.json | jq '{success,errors}'
           test "$(jq -r '.success' /tmp/update.json)" = "true"
 
-      - name: Verify assets survived content-only update
+      - name: Verify assets survived keep_assets update
         shell: bash
         run: |
           set -euo pipefail
@@ -91,7 +93,7 @@ jobs:
             sleep 2
           done
           test "$ready" -eq 1
-          echo 'PASS: content-only update preserved existing assets binding and asset content.'
+          echo 'PASS: keep_assets preserved the existing asset bundle while Worker code changed.'
 
       - name: Delete isolated test Worker
         if: always()
