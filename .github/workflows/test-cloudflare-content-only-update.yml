@@ -57,7 +57,7 @@ jobs:
           done
           test "$ready" -eq 1
 
-      - name: Update Worker module while keeping existing assets
+      - name: Diagnose keep_assets Worker module update
         shell: bash
         run: |
           set -euo pipefail
@@ -73,12 +73,14 @@ jobs:
           EOF
           metadata='{"main_module":"index.js","compatibility_date":"2026-09-15","keep_assets":true,"bindings":[{"type":"assets","name":"ASSETS"}]}'
           url="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${SERVICE}"
-          curl --fail-with-body -sS -X PUT \
+          code=$(curl -sS -X PUT \
             -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
             -F "metadata=${metadata};type=application/json" \
             -F 'index.js=@/tmp/new-index.js;type=application/javascript+module' \
-            "$url" -o /tmp/update.json
-          cat /tmp/update.json | jq '{success,errors}'
+            "$url" -o /tmp/update.json -w '%{http_code}')
+          echo "HTTP $code"
+          cat /tmp/update.json | jq '{success,errors,messages}' || cat /tmp/update.json
+          test "$code" = "200"
           test "$(jq -r '.success' /tmp/update.json)" = "true"
 
       - name: Verify assets survived keep_assets update
