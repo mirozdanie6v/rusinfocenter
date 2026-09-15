@@ -18,10 +18,8 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CF_ZONE_ID: 56fa9423ef85e05559f453af43ec400f
-      CF_ZONE_NAME: viiversion.com
       TARGET_DOMAIN: maxtourvietnam.viiversion.com
       PROXY_NAME: maxtourvietnam-hero-proxy
-      UPSTREAM: https://maxtourvietnam.viiversion.workers.dev
       HERO: https://static.tildacdn.one/tild3037-3338-4836-a362-336236666631/Max_Tour-4.jpg
 
     steps:
@@ -37,13 +35,12 @@ jobs:
           test -n "${CLOUDFLARE_API_TOKEN:-}"
           test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
 
-      - name: Create hero-only proxy worker
+      - name: Create hero-only route worker
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p /tmp/maxtour-hero-proxy
           cat > /tmp/maxtour-hero-proxy/worker.mjs <<'EOF'
-          const UPSTREAM = 'https://maxtourvietnam.viiversion.workers.dev';
           const HERO = 'https://static.tildacdn.one/tild3037-3338-4836-a362-336236666631/Max_Tour-4.jpg';
 
           function heroPatchScript() {
@@ -73,9 +70,7 @@ jobs:
           export default {
             async fetch(request) {
               const incoming = new URL(request.url);
-              const upstreamUrl = new URL(incoming.pathname + incoming.search, UPSTREAM);
-              const upstreamRequest = new Request(upstreamUrl, request);
-              const response = await fetch(upstreamRequest);
+              const response = await fetch(request);
 
               if (incoming.pathname !== '/') return response;
               const contentType = response.headers.get('content-type') || '';
@@ -97,40 +92,26 @@ jobs:
             },
           };
           EOF
-          cat > /tmp/maxtour-hero-proxy/wrangler.jsonc <<'EOF'
+          cat > /tmp/maxtour-hero-proxy/wrangler.jsonc <<EOF
           {
-            "name": "maxtourvietnam-hero-proxy",
+            "name": "${PROXY_NAME}",
             "main": "worker.mjs",
-            "compatibility_date": "2026-09-15"
+            "compatibility_date": "2026-09-15",
+            "routes": [
+              {
+                "pattern": "${TARGET_DOMAIN}/*",
+                "zone_id": "${CF_ZONE_ID}"
+              }
+            ]
           }
           EOF
 
-      - name: Deploy proxy worker
+      - name: Deploy hero route
         working-directory: /tmp/maxtour-hero-proxy
         shell: bash
         run: |
           set -euo pipefail
           npx --yes wrangler@latest deploy --config wrangler.jsonc
-
-      - name: Reassign MAX TOUR domain to proxy
-        shell: bash
-        run: |
-          set -euo pipefail
-          auth=(-H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" -H 'Content-Type: application/json')
-          domains=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains" "${auth[@]}")
-          current_id=$(echo "$domains" | jq -r --arg host "$TARGET_DOMAIN" '.result[]? | select(.hostname == $host) | .id' | head -n1)
-          current_service=$(echo "$domains" | jq -r --arg host "$TARGET_DOMAIN" '.result[]? | select(.hostname == $host) | .service' | head -n1)
-          if [ -n "$current_id" ] && [ "$current_id" != "null" ] && [ "$current_service" != "$PROXY_NAME" ]; then
-            curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains/${current_id}" \
-              -X DELETE "${auth[@]}" -o /tmp/detach.json
-            jq -e '.success == true' /tmp/detach.json >/dev/null
-          fi
-          response=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains" \
-            -X PUT "${auth[@]}" \
-            --data "{\"hostname\":\"${TARGET_DOMAIN}\",\"service\":\"${PROXY_NAME}\",\"zone_id\":\"${CF_ZONE_ID}\",\"zone_name\":\"${CF_ZONE_NAME}\"}")
-          echo "$response" | jq '{success,result:{hostname:.result.hostname,service:.result.service},errors}'
-          test "$(echo "$response" | jq -r '.success')" = "true"
-          test "$(echo "$response" | jq -r '.result.service')" = "$PROXY_NAME"
 
       - name: Verify hero and preserved assets
         shell: bash
@@ -139,14 +120,14 @@ jobs:
           base="https://${TARGET_DOMAIN}"
           ready=0
           for attempt in $(seq 1 30); do
-            if curl -L -fsS --connect-timeout 5 --max-time 20 "$base/?hero_proxy=${GITHUB_SHA}-${attempt}" -o /tmp/home.html; then
+            if curl -L -fsS --connect-timeout 5 --max-time 20 "$base/?hero_route=${GITHUB_SHA}-${attempt}" -o /tmp/home.html; then
               if grep -q 'data-max-tour-hero-patch="1"' /tmp/home.html; then ready=1; break; fi
             fi
             sleep 2
           done
           test "$ready" -eq 1
           grep -q 'Max_Tour-4.jpg' /tmp/home.html
-          curl -L -fsS "$base/api/tours?hero_proxy=${GITHUB_SHA}" -o /tmp/tours.json
+          curl -L -fsS "$base/api/tours?hero_route=${GITHUB_SHA}" -o /tmp/tours.json
           jq -e '.tours | length == 28' /tmp/tours.json >/dev/null
           jq -e '[.tours[].cover_image] | all(. != null and . != "")' /tmp/tours.json >/dev/null
           for asset in \
@@ -155,7 +136,7 @@ jobs:
             /mirror-media/b61ebe9d9d537cde4c.png \
             /mirror-media/41a8eaf3295d53b2f3.png \
             /mirror-media/979b9b42c26fa733e0.png; do
-            curl -L -fsS "$base${asset}?hero_proxy=${GITHUB_SHA}" -o /tmp/check.asset
+            curl -L -fsS "$base${asset}?hero_route=${GITHUB_SHA}" -o /tmp/check.asset
             test -s /tmp/check.asset
           done
-          echo 'MAX TOUR hero proxy live: only hero patched; existing production assets preserved.'
+          echo 'MAX TOUR route live: Max_Tour-4 hero only; all existing production assets preserved.'
