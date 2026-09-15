@@ -1,0 +1,92 @@
+name: Test Cloudflare content-only update
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.test-content-only-update'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      SERVICE: maxtour-content-update-test
+    steps:
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Create and deploy isolated test Worker with assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/cf-content-test/public
+          printf 'asset-preserved-20260915\n' > /tmp/cf-content-test/public/probe.txt
+          cat > /tmp/cf-content-test/index.js <<'EOF'
+          export default { async fetch(request, env) { return env.ASSETS.fetch(request); } };
+          EOF
+          cat > /tmp/cf-content-test/wrangler.jsonc <<EOF
+          {
+            "name": "${SERVICE}",
+            "main": "index.js",
+            "compatibility_date": "2026-09-15",
+            "workers_dev": true,
+            "assets": {
+              "directory": "./public",
+              "binding": "ASSETS",
+              "run_worker_first": true
+            }
+          }
+          EOF
+          cd /tmp/cf-content-test
+          npx --yes wrangler@latest deploy --config wrangler.jsonc
+          curl -L -fsS "https://${SERVICE}.viiversion.workers.dev/probe.txt?before=${GITHUB_SHA}" -o /tmp/before.txt
+          grep -qx 'asset-preserved-20260915' /tmp/before.txt
+
+      - name: Update only Worker content through Cloudflare API
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/new-index.js <<'EOF'
+          export default {
+            async fetch(request, env) {
+              const response = await env.ASSETS.fetch(request);
+              const headers = new Headers(response.headers);
+              headers.set('x-content-only-test', 'ok');
+              return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+            }
+          };
+          EOF
+          url="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/services/${SERVICE}/environments/production/content"
+          curl -fsS -X PUT \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            -F 'index.js=@/tmp/new-index.js;type=application/javascript+module' \
+            "$url" -o /tmp/update.json
+          cat /tmp/update.json | jq '{success,errors}'
+          test "$(jq -r '.success' /tmp/update.json)" = "true"
+
+      - name: Verify assets survived content-only update
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://${SERVICE}.viiversion.workers.dev/probe.txt?after=${GITHUB_SHA}"
+          curl -L -fsS -D /tmp/after.headers "$url" -o /tmp/after.txt
+          grep -qx 'asset-preserved-20260915' /tmp/after.txt
+          grep -qi '^x-content-only-test: ok' /tmp/after.headers
+          echo 'PASS: content-only update preserved existing assets binding and asset content.'
+
+      - name: Delete isolated test Worker
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          npx --yes wrangler@latest delete --name "${SERVICE}" --force
+          exit 0
