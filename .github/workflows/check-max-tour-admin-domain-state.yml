@@ -27,7 +27,11 @@ jobs:
           domains=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains" \
             -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
             -H 'Content-Type: application/json')
-          echo "$domains" | jq -c --arg host "$HOST" '{success, domain: (.result[]? | select(.hostname == $host) | {id, hostname, service, environment, zone_id, zone_name})}'
+          echo "$domains" | jq -c --arg host "$HOST" '{success, domain: (.result[]? | select(.hostname == $host) | {id, cert_id, hostname, service, environment, zone_id, zone_name})}'
+          doh=$(curl -fsS -H 'accept: application/dns-json' "https://cloudflare-dns.com/dns-query?name=${HOST}&type=A" || true)
+          if [ -n "$doh" ]; then
+            echo "$doh" | jq -c '{Status, Answer: [.Answer[]? | {type,data,TTL}]}'
+          fi
           dns=$(curl -fsS "https://api.cloudflare.com/client/v4/zones/${VIIVERSION_ZONE_ID}/dns_records?name=${HOST}" \
             -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
             -H 'Content-Type: application/json' || true)
