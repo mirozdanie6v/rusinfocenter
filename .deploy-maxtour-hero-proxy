@@ -1,4 +1,3 @@
-trigger=2026-09-15-max-tour-4-hero-only-v2
-source=maxtourvietnam.viiversion.workers.dev
+trigger=2026-09-15-max-tour-4-hero-only-v3
 hero=Max_Tour-4.jpg
-mode=proxy-only
+mode=route-proxy
