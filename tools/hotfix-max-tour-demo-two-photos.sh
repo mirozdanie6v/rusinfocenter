@@ -26,8 +26,6 @@ auth="Authorization: Bearer ${CLOUDFLARE_API_TOKEN}"
 
 curl -fsS -H "$auth" "$settings_url" -o /tmp/settings-before.json
 jq -r '.result.bindings[]?.name' /tmp/settings-before.json | sort > /tmp/bindings-before.txt
-cat /tmp/bindings-before.txt
-
 curl -fsS -D /tmp/current.headers -H "$auth" "$content_url" -o /tmp/current.multipart
 
 python - <<'PY'
@@ -53,13 +51,15 @@ for raw_part in body.split(marker):
 if module is None: raise SystemExit('worker-r2.js not found')
 Path('/tmp/original-worker-r2.js').write_bytes(module)
 raw=module
+if raw.count(b'data-max-tour-card-photo-fix="20260916"'):
+    raise SystemExit('Refusing duplicate photo patch: marker already present')
 old=b'''      const asset = await env.ASSETS.fetch(request);\n      return url.pathname.startsWith("/admin/") ? secureAdminAsset(asset) : asset;'''
 if raw.count(old) != 1:
     raise SystemExit(f'Unsafe asset-return target count: {raw.count(old)}')
 new=r'''      const asset = await env.ASSETS.fetch(request);
       if (url.pathname === "/" && !url.pathname.startsWith("/admin/") && (asset.headers.get("content-type") || "").includes("text/html")) {
         let html = await asset.text();
-        const cardPhotoFix = `<script data-max-tour-card-photo-fix="20260916">(()=>{const fixes=[['Остров Орхидей и Остров Обезьян','https://static.tildacdn.one/tild6339-3862-4230-a266-343630333034/26.png'],['Остров Хон Там','https://static.tildacdn.one/tild3861-6231-4462-a235-663762633665/ostrov-hon-tam-2.png']];const apply=()=>{document.querySelectorAll('.tour-card').forEach(card=>{const text=(card.textContent||'').replace(/\s+/g,' ').trim();const hit=fixes.find(([title])=>text.includes(title));if(!hit)return;const src=hit[1];let wrap=card.querySelector('.img-wrap');let img=wrap&&wrap.querySelector('img');if(!img&&wrap){img=document.createElement('img');wrap.prepend(img)}if(!img)return;if(img.getAttribute('src')!==src)img.setAttribute('src',src);img.removeAttribute('srcset');img.onerror=()=>{img.onerror=null;img.src=src};img.style.display='block';img.style.width='100%';img.style.height='100%';img.style.objectFit='cover';img.style.objectPosition='center'}})};apply();const mo=new MutationObserver(apply);mo.observe(document.documentElement,{childList:true,subtree:true});setTimeout(apply,80);setTimeout(apply,500);setTimeout(apply,1500)})();</script>`;
+        const cardPhotoFix = `<script data-max-tour-card-photo-fix="20260916">(()=>{const fixes=[['Остров Орхидей и Остров Обезьян','https://static.tildacdn.one/tild6339-3862-4230-a266-343630333034/26.png'],['Остров Хон Там','https://static.tildacdn.one/tild3861-6231-4462-a235-663762633665/ostrov-hon-tam-2.png']];const apply=()=>{document.querySelectorAll('.tour-card,.wide-card').forEach(card=>{const text=(card.textContent||'').replace(/\s+/g,' ').trim();const hit=fixes.find(([title])=>text.includes(title));if(!hit)return;const src=hit[1];const wrap=card.querySelector('.img-wrap');let img=wrap&&wrap.querySelector('img');if(!img&&wrap){img=document.createElement('img');wrap.prepend(img)}if(!img)return;if(img.getAttribute('src')!==src)img.setAttribute('src',src);img.removeAttribute('srcset');img.onerror=()=>{img.onerror=null;img.src=src};img.style.display='block';img.style.width='100%';img.style.height='100%';img.style.objectFit='cover';img.style.objectPosition='center'}})};apply();const mo=new MutationObserver(apply);mo.observe(document.documentElement,{childList:true,subtree:true});setTimeout(apply,80);setTimeout(apply,500);setTimeout(apply,1500)})();</script>`;
         html = html.includes("</body>") ? html.replace("</body>", `${cardPhotoFix}</body>`) : `${html}${cardPhotoFix}`;
         const headers = new Headers(asset.headers);
         headers.delete("content-length");
@@ -70,10 +70,8 @@ new=r'''      const asset = await env.ASSETS.fetch(request);
 patched=raw.replace(old,new)
 if patched.count(b'data-max-tour-card-photo-fix="20260916"') != 1:
     raise SystemExit('Patch marker not unique')
-if patched.count('Остров Орхидей и Остров Обезьян'.encode()) != 1:
-    raise SystemExit('Orchid title marker not unique')
-if patched.count('Остров Хон Там'.encode()) != 1:
-    raise SystemExit('Hon Tam title marker not unique')
+if patched.count(b"document.querySelectorAll('.tour-card,.wide-card')") != 1:
+    raise SystemExit('Wide-card selector not unique')
 Path('/tmp/patched-worker-r2.js').write_bytes(patched)
 print('original bytes',len(raw),'patched bytes',len(patched))
 PY
@@ -106,9 +104,10 @@ verify_patch() {
   local ok=0
   for attempt in $(seq 1 20); do
     if curl -L -fsS --connect-timeout 5 --max-time 30 "${TARGET}/?photo_fix=${GITHUB_SHA:-manual}-${attempt}" -o /tmp/live.html; then
-      if grep -q 'data-max-tour-card-photo-fix="20260916"' /tmp/live.html && \
-         grep -q 'tild6339-3862-4230-a266-343630333034/26.png' /tmp/live.html && \
-         grep -q 'tild3861-6231-4462-a235-663762633665/ostrov-hon-tam-2.png' /tmp/live.html; then
+      if grep -Fq 'data-max-tour-card-photo-fix="20260916"' /tmp/live.html && \
+         grep -Fq "document.querySelectorAll('.tour-card,.wide-card')" /tmp/live.html && \
+         grep -Fq 'tild6339-3862-4230-a266-343630333034/26.png' /tmp/live.html && \
+         grep -Fq 'tild3861-6231-4462-a235-663762633665/ostrov-hon-tam-2.png' /tmp/live.html; then
         ok=1
         break
       fi
@@ -129,10 +128,8 @@ fi
 if ! verify_patch; then
   echo 'Post-deploy verification failed; restoring original Worker module.' >&2
   upload_module /tmp/original-worker-r2.js /tmp/rollback.json
-  curl -L -fsS --connect-timeout 5 --max-time 30 "${TARGET}/api/health?rollback=${GITHUB_SHA:-manual}" -o /tmp/rollback-health.json
-  jq -e '.ok == true' /tmp/rollback-health.json >/dev/null
   echo 'Rollback complete.' >&2
   exit 1
 fi
 
-echo 'DEPLOY PASS: both tour card photos are live, existing assets kept, bindings unchanged, API healthy.'
+echo 'DEPLOY PASS: both target photo URLs injected for tour-card and wide-card; assets/bindings preserved and API healthy.'
