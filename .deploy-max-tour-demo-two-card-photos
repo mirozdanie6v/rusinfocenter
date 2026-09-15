@@ -1,3 +1,3 @@
-trigger=2026-09-16-two-card-photo-hotfix-run2
+trigger=2026-09-16-two-card-photo-hotfix-run3
 service=max-tour-demo-v28
-mode=exact-multipart-backup-rollback
+mode=keep-assets-keep-bindings-rollback
