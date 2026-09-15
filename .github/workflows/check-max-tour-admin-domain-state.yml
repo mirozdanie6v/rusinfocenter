@@ -19,8 +19,9 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       VIIVERSION_ZONE_ID: 56fa9423ef85e05559f453af43ec400f
       HOST: max-tour-demo-admin.viiversion.com
+      MAIN_HOST: max-tour-demo.viiversion.com
     steps:
-      - name: Inspect Cloudflare worker-domain and DNS state
+      - name: Inspect Cloudflare worker-domain, DNS and HTTP state
         shell: bash
         run: |
           set -euo pipefail
@@ -28,13 +29,24 @@ jobs:
             -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
             -H 'Content-Type: application/json')
           echo "$domains" | jq -c --arg host "$HOST" '{success, domain: (.result[]? | select(.hostname == $host) | {id, cert_id, hostname, service, environment, zone_id, zone_name})}'
+
           doh=$(curl -fsS -H 'accept: application/dns-json' "https://cloudflare-dns.com/dns-query?name=${HOST}&type=A" || true)
-          if [ -n "$doh" ]; then
-            echo "$doh" | jq -c '{Status, Answer: [.Answer[]? | {type,data,TTL}]}'
-          fi
-          dns=$(curl -fsS "https://api.cloudflare.com/client/v4/zones/${VIIVERSION_ZONE_ID}/dns_records?name=${HOST}" \
-            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-            -H 'Content-Type: application/json' || true)
-          if [ -n "$dns" ]; then
-            echo "$dns" | jq -c '{success, records: [.result[]? | {id,type,name,content,proxied,proxiable}]}'
-          fi
+          echo "$doh" | jq -c '{Status, Answer: [.Answer[]? | {type,data,TTL}]}'
+          ip=$(echo "$doh" | jq -r '.Answer[]? | select(.type == 1) | .data' | head -n1)
+          test -n "$ip"
+          resolve_arg="${HOST}:443:${ip}"
+
+          root_code=$(curl --resolve "$resolve_arg" -sS -o /tmp/root.html -w '%{http_code}' "https://${HOST}/" || true)
+          admin_code=$(curl --resolve "$resolve_arg" -L -sS -o /tmp/admin.html -w '%{http_code}' "https://${HOST}/admin/" || true)
+          director_code=$(curl --resolve "$resolve_arg" -L -sS -o /tmp/director.html -w '%{http_code}' "https://${HOST}/director/" || true)
+          blocked_code=$(curl --resolve "$resolve_arg" -sS -o /tmp/blocked.html -w '%{http_code}' "https://${HOST}/tour/dalat-premium" || true)
+          main_code=$(curl -L -sS -o /tmp/main.html -w '%{http_code}' "https://${MAIN_HOST}/" || true)
+          main_admin_code=$(curl -L -sS -o /tmp/main-admin.html -w '%{http_code}' "https://${MAIN_HOST}/admin/" || true)
+          main_director_code=$(curl -L -sS -o /tmp/main-director.html -w '%{http_code}' "https://${MAIN_HOST}/director/" || true)
+
+          printf 'codes root=%s admin=%s director=%s blocked=%s main=%s main_admin=%s main_director=%s\n' \
+            "$root_code" "$admin_code" "$director_code" "$blocked_code" "$main_code" "$main_admin_code" "$main_director_code"
+          printf 'markers admin_logo=%s director_drafts=%s main_identity=%s\n' \
+            "$(grep -Fq '/max-tour-logo.svg' /tmp/admin.html && echo yes || echo no)" \
+            "$(grep -Fq 'maxtourDirectorDrafts' /tmp/director.html && echo yes || echo no)" \
+            "$(grep -Fq 'MaxTour Mini App Prototype v28' /tmp/main.html && echo yes || echo no)"
