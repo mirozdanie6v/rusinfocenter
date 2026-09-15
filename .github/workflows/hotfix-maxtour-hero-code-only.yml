@@ -29,14 +29,12 @@ jobs:
           set -euo pipefail
           test -n "${CLOUDFLARE_API_TOKEN:-}"
           test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
-
           curl -L -fsS --connect-timeout 5 --max-time 20 "${TARGET}/?preflight=${GITHUB_SHA}" -o /tmp/pre-home.html
           grep -q 'id="root"' /tmp/pre-home.html
           curl -L -fsS --connect-timeout 5 --max-time 20 "${TARGET}/api/health?preflight=${GITHUB_SHA}" -o /tmp/pre-health.json
           jq -e '.ok == true and .project == "maxtourvietnam"' /tmp/pre-health.json >/dev/null
           curl -L -fsS --connect-timeout 5 --max-time 20 "${TARGET}/api/tours?preflight=${GITHUB_SHA}" -o /tmp/pre-tours.json
           jq -e '.tours | length == 28' /tmp/pre-tours.json >/dev/null
-
           curl -L -fsS --connect-timeout 5 --max-time 20 "$HERO" -o /tmp/max-tour-4.jpg
           test "$(wc -c < /tmp/max-tour-4.jpg)" -gt 10000
 
@@ -56,7 +54,7 @@ jobs:
           done
           cat /tmp/assets.before
 
-      - name: Back up current Worker module and prepare one-line-target patch
+      - name: Back up current Worker module and prepare unique hero patch
         shell: bash
         run: |
           set -euo pipefail
@@ -85,7 +83,7 @@ jobs:
           target='    return withSourceMeta(request, response);'
           if src.count(target) != 1:
               raise SystemExit(f'Unsafe patch target count: {src.count(target)}')
-          replacement=r'''    const page = await withSourceMeta(request, response);
+          replacement='''    const page = await withSourceMeta(request, response);
               if (url.pathname !== "/") return page;
               const pageType = page.headers.get("content-type") || "";
               if (!pageType.includes("text/html")) return page;
@@ -106,8 +104,8 @@ jobs:
           print('original bytes',len(src),'patched bytes',len(patched))
           PY
 
-          node --check /tmp/original-index.js
-          node --check /tmp/patched-index.js
+          node --input-type=module --check < /tmp/original-index.js
+          node --input-type=module --check < /tmp/patched-index.js
           grep -q 'data-max-tour-hero-patch="1"' /tmp/patched-index.js
 
       - name: Upload code only, verify, and rollback automatically on any regression
@@ -115,7 +113,7 @@ jobs:
         run: |
           set -euo pipefail
           upload_url="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${SERVICE}"
-          metadata="{\"main_module\":\"index.js\",\"compatibility_date\":\"2026-09-14\",\"keep_assets\":true,\"bindings\":[{\"type\":\"assets\",\"name\":\"ASSETS\"},{\"type\":\"d1\",\"name\":\"DB\",\"id\":\"${D1_ID}\"}]}"
+          metadata="{\"main_module\":\"index.js\",\"compatibility_date\":\"2026-09-14\",\"keep_assets\":true,\"bindings\":[{\"type\":\"assets\",\"name\":\"ASSETS\"},{\"type\":\"d1\",\"name\":\"DB\",\"database_id\":\"${D1_ID}\"}]}"
 
           upload_module() {
             local file="$1"
@@ -176,15 +174,18 @@ jobs:
             verify_assets "rollback=${GITHUB_SHA}" || return 1
           }
 
-          upload_module /tmp/patched-index.js /tmp/upload-patched.json
+          if ! upload_module /tmp/patched-index.js /tmp/upload-patched.json; then
+            echo 'Cloudflare rejected the code-only upload; production validation failed before activation.' >&2
+            exit 1
+          fi
 
           if ! verify_patched; then
-            echo 'Verification failed. Restoring original Worker module immediately.' >&2
+            echo 'Post-deploy verification failed. Restoring original Worker module immediately.' >&2
             upload_module /tmp/original-index.js /tmp/upload-rollback.json
             verify_rollback
             echo 'Rollback completed and verified.' >&2
             exit 1
           fi
 
-          echo 'SAFE HOTFIX VERIFIED: Worker code updated, D1 works, 28 tours present, and all sampled static assets are byte-identical.'
+          echo 'SAFE HOTFIX VERIFIED: Worker code updated, D1 works, 28 tours present, and sampled static assets are byte-identical.'
           cat /tmp/assets.after
