@@ -67,7 +67,11 @@ jobs:
                [ "$main_home" = "200" ] && [ "$main_admin" = "200" ] && [ "$main_director" = "200" ] && \
                grep -Fq '/max-tour-logo.svg' /tmp/admin.html && \
                grep -Fq 'maxtourDirectorDrafts' /tmp/director.html && \
-               grep -Fq 'MaxTour Mini App Prototype v28' /tmp/main-home.html; then
+               grep -Fq 'MaxTour Mini App Prototype v28' /tmp/main-home.html && \
+               ! grep -Fq 'Открыть кабинет туриста' /tmp/admin.html && \
+               ! grep -Fq 'Открыть кабинет туриста' /tmp/director.html && \
+               grep -Fq 'Открыть кабинет туриста' /tmp/main-admin.html && \
+               grep -Fq 'Открыть кабинет туриста' /tmp/main-director.html; then
               ok=1
               break
             fi
@@ -75,4 +79,4 @@ jobs:
           done
 
           test "$ok" -eq 1
-          echo "Verified dedicated admin/director host; client Mini App is blocked on the admin host and legacy panel paths remain available on the main Mini App host."
+          echo "Verified dedicated admin/director host without Tourist role; client Mini App is blocked on the admin host and legacy panel role switchers remain unchanged on the main host."
