@@ -1,5 +1,5 @@
-trigger=2026-09-15-homepage-design-parity-v2-final
+trigger=2026-09-15-mobile-header-source-parity
 source=mirozdanie6v/maxtourvietnam@main
 domain=maxtourvietnam.viiversion.com
-revision=71b080d2e31282fd0b51c0167775d94cb2b7c67f
+revision=2f50af721cd831162faa727b2d8a1bbf00463d17
 runner=5e659d0b2b3ba1406a7605d81444d6cceb0278d9
