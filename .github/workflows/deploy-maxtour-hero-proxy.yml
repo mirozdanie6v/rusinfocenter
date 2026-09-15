@@ -112,14 +112,21 @@ jobs:
           set -euo pipefail
           npx --yes wrangler@latest deploy --config wrangler.jsonc
 
-      - name: Attach MAX TOUR domain to proxy
+      - name: Reassign MAX TOUR domain to proxy
         shell: bash
         run: |
           set -euo pipefail
+          auth=(-H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" -H 'Content-Type: application/json')
+          domains=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains" "${auth[@]}")
+          current_id=$(echo "$domains" | jq -r --arg host "$TARGET_DOMAIN" '.result[]? | select(.hostname == $host) | .id' | head -n1)
+          current_service=$(echo "$domains" | jq -r --arg host "$TARGET_DOMAIN" '.result[]? | select(.hostname == $host) | .service' | head -n1)
+          if [ -n "$current_id" ] && [ "$current_id" != "null" ] && [ "$current_service" != "$PROXY_NAME" ]; then
+            curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains/${current_id}" \
+              -X DELETE "${auth[@]}" -o /tmp/detach.json
+            jq -e '.success == true' /tmp/detach.json >/dev/null
+          fi
           response=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains" \
-            -X PUT \
-            -H 'Content-Type: application/json' \
-            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            -X PUT "${auth[@]}" \
             --data "{\"hostname\":\"${TARGET_DOMAIN}\",\"service\":\"${PROXY_NAME}\",\"zone_id\":\"${CF_ZONE_ID}\",\"zone_name\":\"${CF_ZONE_NAME}\"}")
           echo "$response" | jq '{success,result:{hostname:.result.hostname,service:.result.service},errors}'
           test "$(echo "$response" | jq -r '.success')" = "true"
@@ -131,7 +138,7 @@ jobs:
           set -euo pipefail
           base="https://${TARGET_DOMAIN}"
           ready=0
-          for attempt in $(seq 1 20); do
+          for attempt in $(seq 1 30); do
             if curl -L -fsS --connect-timeout 5 --max-time 20 "$base/?hero_proxy=${GITHUB_SHA}-${attempt}" -o /tmp/home.html; then
               if grep -q 'data-max-tour-hero-patch="1"' /tmp/home.html; then ready=1; break; fi
             fi
@@ -142,6 +149,13 @@ jobs:
           curl -L -fsS "$base/api/tours?hero_proxy=${GITHUB_SHA}" -o /tmp/tours.json
           jq -e '.tours | length == 28' /tmp/tours.json >/dev/null
           jq -e '[.tours[].cover_image] | all(. != null and . != "")' /tmp/tours.json >/dev/null
-          curl -L -fsS "$base/mirror-media/789cbd1e52fbe2bb96.png?hero_proxy=${GITHUB_SHA}" -o /tmp/card.png
-          test -s /tmp/card.png
-          echo 'MAX TOUR hero proxy live: only hero patched; catalog and existing image assets preserved.'
+          for asset in \
+            /mirror-media/789cbd1e52fbe2bb96.png \
+            /mirror-media/dbdd4c7c7a1a8b401d.png \
+            /mirror-media/b61ebe9d9d537cde4c.png \
+            /mirror-media/41a8eaf3295d53b2f3.png \
+            /mirror-media/979b9b42c26fa733e0.png; do
+            curl -L -fsS "$base${asset}?hero_proxy=${GITHUB_SHA}" -o /tmp/check.asset
+            test -s /tmp/check.asset
+          done
+          echo 'MAX TOUR hero proxy live: only hero patched; existing production assets preserved.'
