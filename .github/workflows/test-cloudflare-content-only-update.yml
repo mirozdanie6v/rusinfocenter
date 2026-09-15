@@ -57,7 +57,7 @@ jobs:
           done
           test "$ready" -eq 1
 
-      - name: Diagnose keep_assets Worker module update
+      - name: Update Worker module while keeping existing assets
         shell: bash
         run: |
           set -euo pipefail
@@ -76,7 +76,7 @@ jobs:
           code=$(curl -sS -X PUT \
             -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
             -F "metadata=${metadata};type=application/json" \
-            -F 'index.js=@/tmp/new-index.js;type=application/javascript+module' \
+            -F 'index.js=@/tmp/new-index.js;filename=index.js;type=application/javascript+module' \
             "$url" -o /tmp/update.json -w '%{http_code}')
           echo "HTTP $code"
           cat /tmp/update.json | jq '{success,errors,messages}' || cat /tmp/update.json
