@@ -1,0 +1,3 @@
+trigger=2026-09-15-restore-full-known-good-assets
+version=42705a9d-5c00-4841-b99b-45ddda3422f1
+mode=exact-version-rollback
