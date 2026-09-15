@@ -1,4 +1,4 @@
-trigger=2026-09-15-desktop-zero-block-overlap-fix
+trigger=2026-09-15-desktop-zero-block-overlap-fix-retry
 source=mirozdanie6v/maxtourvietnam@main
 domain=maxtourvietnam.viiversion.com
 revision=3400279d20e8696b0268201daf8557f6a19e36e7
