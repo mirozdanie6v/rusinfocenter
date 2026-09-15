@@ -1,0 +1,56 @@
+name: Verify MAX TOUR live after hero change
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.verify-maxtour-live-after-hero'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      TARGET: https://maxtourvietnam.viiversion.com
+    steps:
+      - name: Verify site API and immutable asset hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          curl -L -fsS --connect-timeout 5 --max-time 20 "${TARGET}/?verify=${GITHUB_SHA}" -o /tmp/home.html
+          grep -q 'id="root"' /tmp/home.html
+
+          curl -L -fsS --connect-timeout 5 --max-time 20 "${TARGET}/api/health?verify=${GITHUB_SHA}" -o /tmp/health.json
+          jq -e '.ok == true and .project == "maxtourvietnam"' /tmp/health.json >/dev/null
+
+          curl -L -fsS --connect-timeout 5 --max-time 20 "${TARGET}/api/tours?verify=${GITHUB_SHA}" -o /tmp/tours.json
+          jq -e '.tours | length == 28' /tmp/tours.json >/dev/null
+
+          check_asset() {
+            local path="$1"
+            local expected_size="$2"
+            local expected_sha="$3"
+            local out="/tmp/asset-$(echo "$path" | tr '/.' '__')"
+            curl -L -fsS --connect-timeout 5 --max-time 20 "${TARGET}${path}?verify=${GITHUB_SHA}" -o "$out"
+            local size sha
+            size=$(wc -c < "$out")
+            sha=$(sha256sum "$out" | awk '{print $1}')
+            printf '%s size=%s sha256=%s\n' "$path" "$size" "$sha"
+            test "$size" = "$expected_size"
+            test "$sha" = "$expected_sha"
+          }
+
+          check_asset /mirror-media/370dd828995262c5f6.jpg 248980 1d89317affe7a1d42516652247c6d301c2650831f184c3c8a52a583e364e2b27
+          check_asset /mirror-media/789cbd1e52fbe2bb96.png 933879 e4197eaea052aba5fe4115562d5aee61243eaff8c46e8aa8fe6dac8a98edb09b
+          check_asset /mirror-media/dbdd4c7c7a1a8b401d.png 761393 61c063925e184ff8c590c3694081f84ee2857eb3e9a0be258c0711af1c037334
+          check_asset /mirror-media/b61ebe9d9d537cde4c.png 1035605 5c9579db9ac185c4e63b8803db940d18611052ff8eb39e4961cc97532f2a5f85
+          check_asset /mirror-media/41a8eaf3295d53b2f3.png 2097795 ed1fccfdc6fea03cf0d5d9d85f8f7577eac39a6e085b756c127f2b9b21cecf15
+          check_asset /mirror-media/979b9b42c26fa733e0.png 1830184 f239b7aabaea1a3d9359f3d671cc8d9dd2ba73e96aa80977f2a61e92a90595d6
+          check_asset /mirror-media/4428f3e199f4015673.png 1019251 a2fab5de7eda6ef6f54cb296b31c290133b2a8e3eec7d94a050e81a384ca9963
+
+          echo 'READ-ONLY VERIFY PASS: site reachable, API healthy, 28 tours, sampled assets byte-identical.'
