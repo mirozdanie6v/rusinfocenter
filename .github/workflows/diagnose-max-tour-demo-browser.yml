@@ -1,0 +1,86 @@
+name: Diagnose MAX TOUR demo browser DOM
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.diagnose-max-tour-demo-browser'
+
+permissions:
+  contents: read
+
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Install browser
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/pw && cd /tmp/pw
+          npm init -y >/dev/null 2>&1
+          npm install playwright@latest >/dev/null 2>&1
+          npx playwright install chromium >/dev/null
+      - name: Inspect live catalog DOM
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /tmp/pw
+          cat > inspect.mjs <<'EOF'
+          import { chromium } from 'playwright';
+          const browser = await chromium.launch({headless:true});
+          const page = await browser.newPage({viewport:{width:430,height:932}});
+          await page.goto('https://max-tour-demo.viiversion.com/?pw=' + Date.now(), {waitUntil:'networkidle', timeout:60000});
+          await page.waitForTimeout(1500);
+          const globals = await page.evaluate(() => ({
+            showScreen: typeof globalThis.showScreen,
+            renderCatalog: typeof globalThis.renderCatalog,
+            tours: Array.isArray(globalThis.TOURS) ? globalThis.TOURS.length : null
+          }));
+          console.log('GLOBALS', JSON.stringify(globals));
+          await page.evaluate(() => {
+            if (typeof globalThis.showScreen === 'function') globalThis.showScreen('catalog');
+            else {
+              document.querySelector('#catalogScreen')?.classList.add('active');
+              document.querySelector('#homeScreen')?.classList.remove('active');
+            }
+            if (typeof globalThis.renderCatalog === 'function') globalThis.renderCatalog();
+          });
+          await page.waitForTimeout(1000);
+          const result = await page.evaluate(() => {
+            const titles=['Остров Орхидей и Остров Обезьян','Остров Хон Там'];
+            return {
+              wideCards: document.querySelectorAll('.wide-card').length,
+              tourCards: document.querySelectorAll('.tour-card').length,
+              targets: titles.map(title => {
+                const all=[...document.querySelectorAll('.wide-card,.tour-card')];
+                const card=all.find(el => (el.textContent||'').replace(/\s+/g,' ').includes(title));
+                if(!card) return {title,present:false};
+                const wrap=card.querySelector('.img-wrap');
+                const img=card.querySelector('img');
+                const cs=wrap ? getComputedStyle(wrap) : null;
+                return {
+                  title,present:true,className:card.className,
+                  wrapClass:wrap?.className||null,
+                  wrapBg:cs?.backgroundImage||null,
+                  hasImg:!!img,
+                  src:img?.getAttribute('src')||null,
+                  currentSrc:img?.currentSrc||null,
+                  naturalWidth:img?.naturalWidth||0,
+                  naturalHeight:img?.naturalHeight||0,
+                  outer:card.outerHTML.slice(0,2500)
+                };
+              })
+            };
+          });
+          console.log('RESULT', JSON.stringify(result,null,2));
+          await page.screenshot({path:'/tmp/catalog.png',fullPage:true});
+          await browser.close();
+          EOF
+          node inspect.mjs
