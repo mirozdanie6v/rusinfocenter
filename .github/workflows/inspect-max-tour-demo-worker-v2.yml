@@ -1,0 +1,38 @@
+name: Inspect MAX TOUR demo Worker v2
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.inspect-max-tour-demo-worker-v2'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      HOST: max-tour-demo.viiversion.com
+    steps:
+      - name: Find demo custom-domain service read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
+          auth=(-H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}")
+          curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains" "${auth[@]}" -o /tmp/domains.json
+          jq --arg h "$HOST" '{success, errors, matches:[.result[] | select(.hostname==$h) | {id,hostname,service,environment,zone_id,zone_name}]}' /tmp/domains.json
+          service=$(jq -r --arg h "$HOST" '.result[] | select(.hostname==$h) | .service' /tmp/domains.json | head -n1)
+          if [ -z "$service" ] || [ "$service" = null ]; then echo 'NO_CUSTOM_DOMAIN_SERVICE'; exit 2; fi
+          echo "SERVICE=$service" >> "$GITHUB_ENV"
+          curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/services/${service}/environments/production/settings" "${auth[@]}" -o /tmp/settings.json
+          jq '{success,errors,result:{compatibility_date:.result.compatibility_date,bindings:[.result.bindings[]?|{name,type,service,environment,database_id,id}]}}' /tmp/settings.json
+          curl -fsS -D /tmp/headers -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/services/${service}/environments/production/content" -o /tmp/content
+          echo "CONTENT_BYTES=$(wc -c < /tmp/content)"
+          grep -iE '^(content-type|content-length):' /tmp/headers || true
