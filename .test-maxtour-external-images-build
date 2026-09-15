@@ -1,2 +1,2 @@
-trigger=2026-09-15-clean-build-external-images
+trigger=2026-09-15-clean-build-external-images-retry
 mode=isolated-preview
