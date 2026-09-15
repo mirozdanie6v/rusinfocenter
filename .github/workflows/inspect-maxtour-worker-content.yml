@@ -1,0 +1,58 @@
+name: Inspect MAX TOUR Worker content
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.inspect-maxtour-worker-content'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      SERVICE: maxtourvietnam
+    steps:
+      - name: Inspect current script multipart without changing it
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/services/${SERVICE}/environments/production/content"
+          curl -fsS -D /tmp/headers.txt -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" "$url" -o /tmp/content.bin
+          echo '=== headers ==='
+          grep -iE '^(content-type|content-length|etag|cf-ray):' /tmp/headers.txt || true
+          echo '=== bytes ==='
+          wc -c /tmp/content.bin
+          python - <<'PY'
+          from pathlib import Path
+          import re, json
+          headers = Path('/tmp/headers.txt').read_text(errors='replace')
+          body = Path('/tmp/content.bin').read_bytes()
+          m = re.search(r'boundary=([^;\r\n]+)', headers, re.I)
+          if not m:
+              print('No multipart boundary found')
+              print(body[:500].decode('utf-8','replace'))
+              raise SystemExit
+          boundary = m.group(1).strip('"')
+          marker = ('--'+boundary).encode()
+          parts = body.split(marker)
+          print('boundary', boundary)
+          for i,p in enumerate(parts):
+              p=p.strip(b'\r\n-')
+              if not p: continue
+              head, sep, data = p.partition(b'\r\n\r\n')
+              print(f'PART {i}:', head.decode('utf-8','replace').replace('\r\n',' | '), 'bytes=', len(data))
+              if b'name="metadata"' in head:
+                  try:
+                      obj=json.loads(data.decode())
+                      safe={k:obj.get(k) for k in ('main_module','body_part','compatibility_date','compatibility_flags','bindings') if k in obj}
+                      print('METADATA', json.dumps(safe, ensure_ascii=False))
+                  except Exception as e:
+                      print('metadata parse error', e)
+          PY
