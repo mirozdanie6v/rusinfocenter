@@ -1,0 +1,59 @@
+name: Diagnose MAX TOUR demo photo fix
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.diagnose-max-tour-demo-photo-fix'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      SERVICE: max-tour-demo-v28
+      TARGET: https://max-tour-demo.viiversion.com
+    steps:
+      - name: Diagnose live state read-only
+        shell: bash
+        run: |
+          set -u
+          echo '=== ROOT ==='
+          curl -L -sS -D /tmp/root.h "${TARGET}/?diag=${GITHUB_SHA}" -o /tmp/root.html
+          grep -i '^HTTP\|^content-type' /tmp/root.h || true
+          echo "root_bytes=$(wc -c < /tmp/root.html)"
+          echo "marker_count=$(grep -o 'data-max-tour-card-photo-fix="20260916"' /tmp/root.html | wc -l)"
+          echo "tour_selector_count=$(grep -o "document.querySelectorAll('.tour-card')" /tmp/root.html | wc -l)"
+          echo "wide_selector_count=$(grep -o "document.querySelectorAll('.tour-card,.wide-card')" /tmp/root.html | wc -l)"
+          echo "orchid_url_count=$(grep -o 'tild6339-3862-4230-a266-343630333034/26.png' /tmp/root.html | wc -l)"
+          echo "hontam_url_count=$(grep -o 'tild3861-6231-4462-a235-663762633665/ostrov-hon-tam-2.png' /tmp/root.html | wc -l)"
+
+          echo '=== API HEALTH ==='
+          curl -L -sS -w '\nHTTP=%{http_code}\n' "${TARGET}/api/health?diag=${GITHUB_SHA}" -o /tmp/health.json
+          cat /tmp/health.json
+          echo
+
+          echo '=== CATALOG ==='
+          code=$(curl -L -sS -w '%{http_code}' "${TARGET}/catalog.v28.json?diag=${GITHUB_SHA}" -o /tmp/catalog.json)
+          echo "catalog_http=$code bytes=$(wc -c < /tmp/catalog.json)"
+          if jq empty /tmp/catalog.json >/dev/null 2>&1; then
+            echo "catalog_length=$(jq 'length' /tmp/catalog.json)"
+            echo 'matches orchid:'
+            jq -r '.[] | select((.title // "") | test("Орхид|Обезьян";"i")) | [.id,.title,.image,.fallbackImage] | @tsv' /tmp/catalog.json || true
+            echo 'matches hontam:'
+            jq -r '.[] | select((.title // "") | test("Хон Там|Hon Tam";"i")) | [.id,.title,.image,.fallbackImage] | @tsv' /tmp/catalog.json || true
+          else
+            head -c 1000 /tmp/catalog.json
+            echo
+          fi
+
+          echo '=== BINDINGS ==='
+          curl -fsS -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/services/${SERVICE}/environments/production/settings" \
+            | jq -r '.result.bindings[]? | [.name,.type] | @tsv' | sort
