@@ -1,0 +1,59 @@
+name: Restore maxtourvietnam assets
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.restore-maxtourvietnam-assets'
+
+permissions:
+  contents: read
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Install Wrangler
+        run: npm install --no-audit --no-fund wrangler@latest
+
+      - name: Verify credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
+
+      - name: Roll back latest maxtourvietnam deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler rollback --name maxtourvietnam --message "Restore full production assets before hero hotfix"
+
+      - name: Verify production
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='https://maxtourvietnam.viiversion.com'
+          for i in $(seq 1 20); do
+            if curl -L -fsS --connect-timeout 5 --max-time 20 "$base/?restore=$GITHUB_SHA-$i" -o /tmp/home.html; then
+              if grep -Eq '/assets/index-[^"'"']+\.js' /tmp/home.html; then break; fi
+            fi
+            sleep 2
+          done
+          js=$(grep -oE '/assets/index-[^"'"']+\.js' /tmp/home.html | head -n1)
+          test -n "$js"
+          curl -L -fsS "$base${js}?restore=$GITHUB_SHA" -o /tmp/app.js
+          grep -q '/mirror-media/' /tmp/app.js
+          curl -L -fsS "$base/api/tours?restore=$GITHUB_SHA" -o /tmp/tours.json
+          jq -e '.tours | length == 28' /tmp/tours.json >/dev/null
+          echo "Restored production assets and verified app bundle/API."
