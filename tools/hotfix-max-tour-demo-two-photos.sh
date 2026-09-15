@@ -20,13 +20,39 @@ curl -L -fsS --connect-timeout 5 --max-time 30 "${TARGET}/api/health?pre=${GITHU
 jq -e '.ok == true' /tmp/pre-health.json >/dev/null
 
 content_url="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/services/${SERVICE}/environments/production/content"
-curl -fsS -D /tmp/current.headers -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" "$content_url" -o /tmp/current.multipart
-cp /tmp/current.multipart /tmp/patched.multipart
+settings_url="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/services/${SERVICE}/environments/production/settings"
+upload_url="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${SERVICE}"
+auth="Authorization: Bearer ${CLOUDFLARE_API_TOKEN}"
+
+curl -fsS -H "$auth" "$settings_url" -o /tmp/settings-before.json
+jq -r '.result.bindings[]?.name' /tmp/settings-before.json | sort > /tmp/bindings-before.txt
+cat /tmp/bindings-before.txt
+
+curl -fsS -D /tmp/current.headers -H "$auth" "$content_url" -o /tmp/current.multipart
 
 python - <<'PY'
 from pathlib import Path
-p=Path('/tmp/patched.multipart')
-raw=p.read_bytes()
+import re
+headers=Path('/tmp/current.headers').read_text(errors='replace')
+body=Path('/tmp/current.multipart').read_bytes()
+m=re.search(r'boundary=([^;\r\n]+)',headers,re.I)
+if not m: raise SystemExit('No multipart boundary')
+boundary=m.group(1).strip('"')
+marker=('--'+boundary).encode()
+module=None
+for raw_part in body.split(marker):
+    if raw_part.startswith(b'\r\n'):
+        raw_part=raw_part[2:]
+    head,sep,data=raw_part.partition(b'\r\n\r\n')
+    if not sep: continue
+    if b'name="worker-r2.js"' in head:
+        if data.endswith(b'\r\n'):
+            data=data[:-2]
+        module=data
+        break
+if module is None: raise SystemExit('worker-r2.js not found')
+Path('/tmp/original-worker-r2.js').write_bytes(module)
+raw=module
 old=b'''      const asset = await env.ASSETS.fetch(request);\n      return url.pathname.startsWith("/admin/") ? secureAdminAsset(asset) : asset;'''
 if raw.count(old) != 1:
     raise SystemExit(f'Unsafe asset-return target count: {raw.count(old)}')
@@ -41,31 +67,39 @@ new=r'''      const asset = await env.ASSETS.fetch(request);
         return new Response(html, { status: asset.status, statusText: asset.statusText, headers });
       }
       return url.pathname.startsWith("/admin/") ? secureAdminAsset(asset) : asset;'''.encode('utf-8')
-raw=raw.replace(old,new)
-if raw.count(b'data-max-tour-card-photo-fix="20260916"') != 1:
+patched=raw.replace(old,new)
+if patched.count(b'data-max-tour-card-photo-fix="20260916"') != 1:
     raise SystemExit('Patch marker not unique')
-if raw.count('Остров Орхидей и Остров Обезьян'.encode()) != 1:
+if patched.count('Остров Орхидей и Остров Обезьян'.encode()) != 1:
     raise SystemExit('Orchid title marker not unique')
-if raw.count('Остров Хон Там'.encode()) != 1:
+if patched.count('Остров Хон Там'.encode()) != 1:
     raise SystemExit('Hon Tam title marker not unique')
-p.write_bytes(raw)
-print('backup bytes',Path('/tmp/current.multipart').stat().st_size,'patched bytes',p.stat().st_size)
+Path('/tmp/patched-worker-r2.js').write_bytes(patched)
+print('original bytes',len(raw),'patched bytes',len(patched))
 PY
 
-ctype=$(grep -i '^content-type:' /tmp/current.headers | tail -n1 | sed -E 's/^[Cc]ontent-[Tt]ype:[[:space:]]*//' | tr -d '\r')
-test -n "$ctype"
+node --input-type=module --check < /tmp/original-worker-r2.js
+node --input-type=module --check < /tmp/patched-worker-r2.js
 
-upload() {
+metadata='{"main_module":"worker-r2.js","compatibility_date":"2026-09-09","keep_assets":true,"keep_bindings":["ai","plain_text","d1","r2_bucket"],"bindings":[{"type":"assets","name":"ASSETS"}]}'
+
+upload_module() {
   local file="$1" out="$2" code
   code=$(curl -sS -X PUT \
-    -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-    -H "Content-Type: ${ctype}" \
-    --data-binary "@${file}" \
-    "$content_url" -o "$out" -w '%{http_code}')
+    -H "$auth" \
+    -F "metadata=${metadata};type=application/json" \
+    -F "worker-r2.js=@${file};filename=worker-r2.js;type=application/javascript+module" \
+    "$upload_url" -o "$out" -w '%{http_code}')
   echo "upload HTTP $code"
-  head -c 1000 "$out" || true
-  echo
+  jq '{success,errors,messages}' "$out" 2>/dev/null || head -c 1500 "$out"
   test "$code" = "200"
+  test "$(jq -r '.success' "$out")" = "true"
+}
+
+verify_bindings() {
+  curl -fsS -H "$auth" "$settings_url" -o /tmp/settings-after.json || return 1
+  jq -r '.result.bindings[]?.name' /tmp/settings-after.json | sort > /tmp/bindings-after.txt
+  diff -u /tmp/bindings-before.txt /tmp/bindings-after.txt || return 1
 }
 
 verify_patch() {
@@ -84,20 +118,21 @@ verify_patch() {
   test "$ok" -eq 1 || return 1
   curl -L -fsS --connect-timeout 5 --max-time 30 "${TARGET}/api/health?photo_fix=${GITHUB_SHA:-manual}" -o /tmp/health.json || return 1
   jq -e '.ok == true' /tmp/health.json >/dev/null || return 1
+  verify_bindings || return 1
 }
 
-if ! upload /tmp/patched.multipart /tmp/upload.json; then
+if ! upload_module /tmp/patched-worker-r2.js /tmp/upload.json; then
   echo 'Cloudflare rejected patch; live code unchanged.' >&2
   exit 1
 fi
 
 if ! verify_patch; then
-  echo 'Verification failed; restoring exact original multipart.' >&2
-  upload /tmp/current.multipart /tmp/rollback.json
+  echo 'Post-deploy verification failed; restoring original Worker module.' >&2
+  upload_module /tmp/original-worker-r2.js /tmp/rollback.json
   curl -L -fsS --connect-timeout 5 --max-time 30 "${TARGET}/api/health?rollback=${GITHUB_SHA:-manual}" -o /tmp/rollback-health.json
   jq -e '.ok == true' /tmp/rollback-health.json >/dev/null
   echo 'Rollback complete.' >&2
   exit 1
 fi
 
-echo 'DEPLOY PASS: both tour photo fixes are live; API remains healthy.'
+echo 'DEPLOY PASS: both tour card photos are live, existing assets kept, bindings unchanged, API healthy.'
