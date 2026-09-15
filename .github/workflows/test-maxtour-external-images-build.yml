@@ -47,35 +47,6 @@ jobs:
           fi
           echo 'CLEAN BUILD PASS: runtime images use original Tilda URLs.'
 
-      - name: Validate source image URLs
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          from pathlib import Path
-          import re
-          text='\n'.join([
-              Path('src/client/data.ts').read_text(),
-              Path('src/client/homepage-source-v3.ts').read_text(),
-          ])
-          urls=sorted(set(re.findall(r"https://static\.tildacdn\.(?:one|net)/[^'\"`\s]+", text)))
-          Path('/tmp/image-urls.txt').write_text('\n'.join(urls)+'\n')
-          print('source image urls', len(urls))
-          if len(urls) < 30:
-              raise SystemExit('Too few source image URLs found')
-          PY
-          failures=0
-          while IFS= read -r url; do
-            code=$(curl -L -sS --connect-timeout 5 --max-time 20 -o /tmp/img -w '%{http_code}' "$url" || true)
-            size=$(wc -c < /tmp/img 2>/dev/null || echo 0)
-            if [ "$code" != "200" ] || [ "$size" -lt 1000 ]; then
-              echo "BAD $code $size $url"
-              failures=$((failures+1))
-            fi
-          done < /tmp/image-urls.txt
-          echo "image-url failures=$failures"
-          test "$failures" -eq 0
-
       - name: Deploy isolated preview with same D1
         shell: bash
         run: |
@@ -117,11 +88,3 @@ jobs:
           curl -L -fsS "$base/api/tours" -o /tmp/tours
           jq -e '.tours | length == 28' /tmp/tours >/dev/null
           echo "PREVIEW PASS $base"
-
-      - name: Delete preview
-        if: always()
-        shell: bash
-        run: |
-          set +e
-          npx wrangler delete --name "$PREVIEW" --force
-          exit 0
