@@ -1,0 +1,2 @@
+trigger=2026-09-15-clean-external-images-production
+mode=current-worker-clean-frontend
