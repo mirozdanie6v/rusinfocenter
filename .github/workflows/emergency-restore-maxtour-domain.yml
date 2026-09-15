@@ -1,0 +1,58 @@
+name: Emergency restore MAX TOUR domain
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.emergency-restore-maxtour-domain'
+
+permissions:
+  contents: read
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      TARGET_DOMAIN: maxtourvietnam.viiversion.com
+      TARGET_SERVICE: maxtourvietnam
+      ZONE_ID: 56fa9423ef85e05559f453af43ec400f
+      ZONE_NAME: viiversion.com
+
+    steps:
+      - name: Restore original custom domain
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
+          response=$(curl -sS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains" \
+            -X PUT \
+            -H 'Content-Type: application/json' \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            --data "{\"hostname\":\"${TARGET_DOMAIN}\",\"service\":\"${TARGET_SERVICE}\",\"zone_id\":\"${ZONE_ID}\",\"zone_name\":\"${ZONE_NAME}\"}")
+          echo "$response" | jq '{success,errors,result:{hostname:.result.hostname,service:.result.service}}'
+          test "$(echo "$response" | jq -r '.success')" = "true"
+          test "$(echo "$response" | jq -r '.result.hostname')" = "$TARGET_DOMAIN"
+          test "$(echo "$response" | jq -r '.result.service')" = "$TARGET_SERVICE"
+
+      - name: Verify site recovered
+        shell: bash
+        run: |
+          set -euo pipefail
+          ok=0
+          for attempt in $(seq 1 60); do
+            code=$(curl -L -sS --connect-timeout 5 --max-time 20 -o /tmp/home.html -w '%{http_code}' "https://${TARGET_DOMAIN}/?restore=${GITHUB_SHA}-${attempt}" || true)
+            if [ "$code" = "200" ] && grep -q 'id="root"' /tmp/home.html; then
+              ok=1
+              break
+            fi
+            sleep 2
+          done
+          test "$ok" -eq 1
+          curl -L -fsS "https://${TARGET_DOMAIN}/api/tours?restore=${GITHUB_SHA}" -o /tmp/tours.json
+          jq -e '.tours | length == 28' /tmp/tours.json >/dev/null
+          echo 'MAX TOUR domain restored to original maxtourvietnam worker.'
