@@ -1,0 +1,156 @@
+name: Switch MAX TOUR hero proxy domain
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.switch-maxtour-hero-proxy-domain'
+
+permissions:
+  contents: read
+
+jobs:
+  switch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CF_ZONE_ID: 56fa9423ef85e05559f453af43ec400f
+      CF_ZONE_NAME: viiversion.com
+      TARGET_DOMAIN: maxtourvietnam.viiversion.com
+      PROXY_NAME: maxtourvietnam-hero-proxy
+      UPSTREAM: https://maxtourvietnam.viiversion.workers.dev
+      HERO: https://static.tildacdn.one/tild3037-3338-4836-a362-336236666631/Max_Tour-4.jpg
+
+    steps:
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Verify credentials and upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
+          curl -L -fsS --connect-timeout 5 --max-time 20 "${UPSTREAM}/?precheck=${GITHUB_SHA}" -o /tmp/upstream.html
+          grep -q 'id="root"' /tmp/upstream.html
+
+      - name: Deploy isolated hero proxy
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/maxtour-domain-proxy
+          cat > /tmp/maxtour-domain-proxy/worker.mjs <<'EOF'
+          const UPSTREAM = 'https://maxtourvietnam.viiversion.workers.dev';
+          const HERO = 'https://static.tildacdn.one/tild3037-3338-4836-a362-336236666631/Max_Tour-4.jpg';
+
+          const patch = `<script data-max-tour-hero-patch="1">(() => {
+            const HERO = ${JSON.stringify(HERO)};
+            const apply = () => {
+              const hero = document.querySelector('.source-v3-hero-media img');
+              if (hero && hero.getAttribute('src') !== HERO) {
+                hero.setAttribute('src', HERO);
+                hero.removeAttribute('srcset');
+              }
+              const firstSlide = document.querySelector('.hero-slider .hero-slide');
+              if (firstSlide) firstSlide.style.backgroundImage = 'url("' + HERO + '")';
+            };
+            const start = () => {
+              apply();
+              new MutationObserver(apply).observe(document.documentElement, { childList: true, subtree: true });
+              setTimeout(apply, 50);
+              setTimeout(apply, 500);
+              setTimeout(apply, 1500);
+            };
+            if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
+            else start();
+          })();</script>`;
+
+          export default {
+            async fetch(request) {
+              const url = new URL(request.url);
+              const upstream = new URL(url.pathname + url.search, UPSTREAM);
+              const response = await fetch(new Request(upstream, request));
+              if (url.pathname !== '/') return response;
+              const type = response.headers.get('content-type') || '';
+              if (!type.includes('text/html')) return response;
+              let html = await response.text();
+              html = html.includes('</body>') ? html.replace('</body>', `${patch}</body>`) : `${html}${patch}`;
+              const headers = new Headers(response.headers);
+              headers.delete('content-length');
+              headers.set('content-type', 'text/html; charset=utf-8');
+              headers.set('x-max-tour-hero-proxy', 'max-tour-4');
+              return new Response(html, { status: response.status, statusText: response.statusText, headers });
+            },
+          };
+          EOF
+          cat > /tmp/maxtour-domain-proxy/wrangler.jsonc <<'EOF'
+          {
+            "name": "maxtourvietnam-hero-proxy",
+            "main": "worker.mjs",
+            "compatibility_date": "2026-09-15",
+            "workers_dev": true
+          }
+          EOF
+          cd /tmp/maxtour-domain-proxy
+          npx --yes wrangler@latest deploy --config wrangler.jsonc
+          curl -L -fsS --connect-timeout 5 --max-time 20 "https://maxtourvietnam-hero-proxy.viiversion.workers.dev/?proxy_precheck=${GITHUB_SHA}" -o /tmp/proxy.html
+          grep -q 'data-max-tour-hero-patch="1"' /tmp/proxy.html
+          grep -q 'Max_Tour-4.jpg' /tmp/proxy.html
+
+      - name: Switch custom domain to hero proxy
+        shell: bash
+        run: |
+          set -euo pipefail
+          auth=(-H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" -H 'Content-Type: application/json')
+          domains=$(curl -sS -G "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains" \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            --data-urlencode "hostname=${TARGET_DOMAIN}")
+          echo "$domains" | jq '{success,errors,result:[.result[]? | {id,hostname,service,zone_name}]}'
+          test "$(echo "$domains" | jq -r '.success')" = "true"
+          domain_id=$(echo "$domains" | jq -r --arg host "$TARGET_DOMAIN" '.result[]? | select(.hostname == $host) | .id' | sed -n '1p')
+          current_service=$(echo "$domains" | jq -r --arg host "$TARGET_DOMAIN" '.result[]? | select(.hostname == $host) | .service' | sed -n '1p')
+          if [ -n "$domain_id" ] && [ "$domain_id" != "null" ] && [ "$current_service" != "$PROXY_NAME" ]; then
+            detach=$(curl -sS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains/${domain_id}" \
+              -X DELETE "${auth[@]}")
+            echo "$detach" | jq '{success,errors}'
+            test "$(echo "$detach" | jq -r '.success')" = "true"
+          fi
+          attach=$(curl -sS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains" \
+            -X PUT "${auth[@]}" \
+            --data "{\"hostname\":\"${TARGET_DOMAIN}\",\"service\":\"${PROXY_NAME}\",\"zone_id\":\"${CF_ZONE_ID}\",\"zone_name\":\"${CF_ZONE_NAME}\"}")
+          echo "$attach" | jq '{success,errors,result:{hostname:.result.hostname,service:.result.service}}'
+          test "$(echo "$attach" | jq -r '.success')" = "true"
+          test "$(echo "$attach" | jq -r '.result.service')" = "$PROXY_NAME"
+
+      - name: Verify live hero and all existing assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://${TARGET_DOMAIN}"
+          ready=0
+          for attempt in $(seq 1 40); do
+            if curl -L -fsS --connect-timeout 5 --max-time 20 "$base/?hero_switch=${GITHUB_SHA}-${attempt}" -o /tmp/home.html; then
+              if grep -q 'data-max-tour-hero-patch="1"' /tmp/home.html; then ready=1; break; fi
+            fi
+            sleep 2
+          done
+          test "$ready" -eq 1
+          grep -q 'Max_Tour-4.jpg' /tmp/home.html
+          curl -L -fsS "$base/api/tours?hero_switch=${GITHUB_SHA}" -o /tmp/tours.json
+          jq -e '.tours | length == 28' /tmp/tours.json >/dev/null
+          for asset in \
+            /mirror-media/789cbd1e52fbe2bb96.png \
+            /mirror-media/dbdd4c7c7a1a8b401d.png \
+            /mirror-media/b61ebe9d9d537cde4c.png \
+            /mirror-media/41a8eaf3295d53b2f3.png \
+            /mirror-media/979b9b42c26fa733e0.png \
+            /mirror-media/4428f3e199f4015673.png; do
+            curl -L -fsS "$base${asset}?hero_switch=${GITHUB_SHA}" -o /tmp/asset
+            test -s /tmp/asset
+          done
+          echo 'LIVE OK: only MAX TOUR hero uses Max_Tour-4.jpg; existing image assets and API are preserved.'
