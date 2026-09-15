@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - '.deploy-max-tour-demo'
+      - '.github/workflows/attach-max-tour-admin-domain.yml'
   workflow_dispatch:
 
 permissions:
@@ -14,7 +15,7 @@ permissions:
 jobs:
   attach-admin-domain:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -44,7 +45,12 @@ jobs:
           admin_base="https://${MAX_TOUR_ADMIN_HOST}"
           main_base="https://${MAX_TOUR_MAIN_HOST}"
           ok=0
-          for attempt in $(seq 1 36); do
+          for attempt in $(seq 1 120); do
+            if ! getent ahosts "$MAX_TOUR_ADMIN_HOST" >/dev/null 2>&1; then
+              sleep 5
+              continue
+            fi
+
             root_code=$(curl -sS --connect-timeout 5 --max-time 20 -o /tmp/admin-root.html -w '%{http_code}' "$admin_base/" || true)
             admin_code=$(curl -L -sS --connect-timeout 5 --max-time 20 -o /tmp/admin.html -w '%{http_code}' "$admin_base/admin/?deploy=${GITHUB_SHA}" || true)
             director_code=$(curl -L -sS --connect-timeout 5 --max-time 20 -o /tmp/director.html -w '%{http_code}' "$admin_base/director/?deploy=${GITHUB_SHA}" || true)
@@ -64,4 +70,4 @@ jobs:
             sleep 5
           done
           test "$ok" -eq 1
-          echo "Verified dedicated admin/director host; client Mini App remains available only on the main host and legacy panel paths are preserved there."
+          echo "Verified dedicated admin/director host; client Mini App is blocked on the admin host and legacy panel paths remain available on the main Mini App host."
