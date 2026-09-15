@@ -1,5 +1,5 @@
-trigger=2026-09-15-homepage-section-order-parity
+trigger=2026-09-15-zero-block-overlap-fix
 source=mirozdanie6v/maxtourvietnam@main
 domain=maxtourvietnam.viiversion.com
-revision=9457139bbb8b6ccb2aaa60acb7940478675d3515
+revision=e55923ae8b7d6fc7c77d3924e6e6db3152e1b480
 runner=5e659d0b2b3ba1406a7605d81444d6cceb0278d9
