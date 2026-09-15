@@ -1,0 +1,116 @@
+name: Deploy MAX TOUR clean external-image frontend
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.deploy-maxtour-clean-images-production'
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      D1_ID: d0546bc9-b101-4e30-b9a9-b45a373aec6b
+      SERVICE: maxtourvietnam
+      TARGET: https://maxtourvietnam.viiversion.com
+    steps:
+      - name: Checkout MAX TOUR source
+        uses: actions/checkout@v5
+        with:
+          repository: mirozdanie6v/maxtourvietnam
+          ref: main
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Build clean frontend without mirror-media
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install
+          npm run build
+          bundle=$(find dist/assets -type f -name '*.js' | head -n 1)
+          grep -q 'static.tildacdn' "$bundle"
+          ! grep -q '/mirror-media/' "$bundle"
+          echo "production frontend bundle=$bundle"
+
+      - name: Preserve exact current production Worker logic
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/services/${SERVICE}/environments/production/content"
+          curl -fsS -D /tmp/headers -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" "$url" -o /tmp/content
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          h=Path('/tmp/headers').read_text(errors='replace')
+          b=Path('/tmp/content').read_bytes()
+          m=re.search(r'boundary=([^;\r\n]+)',h,re.I)
+          if not m: raise SystemExit('No multipart boundary')
+          boundary=m.group(1).strip('"')
+          for part in b.split(('--'+boundary).encode()):
+              head,sep,data=part.partition(b'\r\n\r\n')
+              if sep and b'name="index.js"' in head:
+                  Path('/tmp/current-worker.js').write_bytes(data.rstrip(b'\r\n-'))
+                  break
+          else:
+              raise SystemExit('index.js not found')
+          PY
+          node --input-type=module --check < /tmp/current-worker.js
+          grep -q '/api/health' /tmp/current-worker.js
+          grep -q 'ASSETS.fetch' /tmp/current-worker.js
+
+      - name: Deploy same Worker logic with clean frontend assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/wrangler.production.jsonc <<EOF
+          {
+            "name": "${SERVICE}",
+            "main": "/tmp/current-worker.js",
+            "compatibility_date": "2026-09-14",
+            "assets": {
+              "directory": "${GITHUB_WORKSPACE}/dist",
+              "binding": "ASSETS",
+              "not_found_handling": "single-page-application",
+              "run_worker_first": ["/api/*"]
+            },
+            "d1_databases": [{
+              "binding": "DB",
+              "database_name": "maxtourvietnam",
+              "database_id": "${D1_ID}"
+            }]
+          }
+          EOF
+          npx wrangler deploy --config /tmp/wrangler.production.jsonc
+
+      - name: Verify production page and API
+        shell: bash
+        run: |
+          set -euo pipefail
+          ok=0
+          for attempt in $(seq 1 30); do
+            if curl -L -fsS "${TARGET}/?images=${GITHUB_SHA}-${attempt}" -o /tmp/home && grep -q 'id="root"' /tmp/home; then ok=1; break; fi
+            sleep 2
+          done
+          test "$ok" -eq 1
+
+          ok=0
+          for attempt in $(seq 1 20); do
+            if curl -L -fsS "${TARGET}/api/health?images=${GITHUB_SHA}-${attempt}" -o /tmp/health && jq -e '.ok == true and .project == "maxtourvietnam"' /tmp/health >/dev/null; then ok=1; break; fi
+            sleep 2
+          done
+          test "$ok" -eq 1
+
+          curl -L -fsS "${TARGET}/api/tours?images=${GITHUB_SHA}" -o /tmp/tours
+          jq -e '.tours | length == 28' /tmp/tours >/dev/null
+          echo 'PRODUCTION DEPLOY PASS: clean frontend assets + current Worker logic + D1.'
