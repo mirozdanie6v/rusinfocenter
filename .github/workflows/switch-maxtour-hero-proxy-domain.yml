@@ -21,7 +21,6 @@ jobs:
       CF_ZONE_NAME: viiversion.com
       TARGET_DOMAIN: maxtourvietnam.viiversion.com
       PROXY_NAME: maxtourvietnam-hero-proxy
-      UPSTREAM: https://maxtourvietnam.viiversion.workers.dev
       HERO: https://static.tildacdn.one/tild3037-3338-4836-a362-336236666631/Max_Tour-4.jpg
 
     steps:
@@ -30,22 +29,23 @@ jobs:
         with:
           node-version: 22
 
-      - name: Verify credentials and upstream
+      - name: Verify credentials and current live site
         shell: bash
         run: |
           set -euo pipefail
           test -n "${CLOUDFLARE_API_TOKEN:-}"
           test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
-          curl -L -fsS --connect-timeout 5 --max-time 20 "${UPSTREAM}/?precheck=${GITHUB_SHA}" -o /tmp/upstream.html
-          grep -q 'id="root"' /tmp/upstream.html
+          curl -L -fsS --connect-timeout 5 --max-time 20 "https://${TARGET_DOMAIN}/?precheck=${GITHUB_SHA}" -o /tmp/current.html
+          grep -q 'id="root"' /tmp/current.html
+          curl -L -fsS --connect-timeout 5 --max-time 20 "https://${TARGET_DOMAIN}/mirror-media/789cbd1e52fbe2bb96.png?precheck=${GITHUB_SHA}" -o /tmp/current-card.png
+          test -s /tmp/current-card.png
 
-      - name: Deploy isolated hero proxy
+      - name: Deploy isolated hero proxy with service binding
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p /tmp/maxtour-domain-proxy
           cat > /tmp/maxtour-domain-proxy/worker.mjs <<'EOF'
-          const UPSTREAM = 'https://maxtourvietnam.viiversion.workers.dev';
           const HERO = 'https://static.tildacdn.one/tild3037-3338-4836-a362-336236666631/Max_Tour-4.jpg';
 
           const patch = `<script data-max-tour-hero-patch="1">(() => {
@@ -71,10 +71,9 @@ jobs:
           })();</script>`;
 
           export default {
-            async fetch(request) {
+            async fetch(request, env) {
               const url = new URL(request.url);
-              const upstream = new URL(url.pathname + url.search, UPSTREAM);
-              const response = await fetch(new Request(upstream, request));
+              const response = await env.ORIGIN.fetch(request);
               if (url.pathname !== '/') return response;
               const type = response.headers.get('content-type') || '';
               if (!type.includes('text/html')) return response;
@@ -93,14 +92,28 @@ jobs:
             "name": "maxtourvietnam-hero-proxy",
             "main": "worker.mjs",
             "compatibility_date": "2026-09-15",
-            "workers_dev": true
+            "workers_dev": true,
+            "services": [
+              {
+                "binding": "ORIGIN",
+                "service": "maxtourvietnam"
+              }
+            ]
           }
           EOF
           cd /tmp/maxtour-domain-proxy
           npx --yes wrangler@latest deploy --config wrangler.jsonc
-          curl -L -fsS --connect-timeout 5 --max-time 20 "https://maxtourvietnam-hero-proxy.viiversion.workers.dev/?proxy_precheck=${GITHUB_SHA}" -o /tmp/proxy.html
-          grep -q 'data-max-tour-hero-patch="1"' /tmp/proxy.html
+          ready=0
+          for attempt in $(seq 1 15); do
+            if curl -L -fsS --connect-timeout 5 --max-time 20 "https://maxtourvietnam-hero-proxy.viiversion.workers.dev/?proxy_precheck=${GITHUB_SHA}-${attempt}" -o /tmp/proxy.html; then
+              if grep -q 'data-max-tour-hero-patch="1"' /tmp/proxy.html; then ready=1; break; fi
+            fi
+            sleep 2
+          done
+          test "$ready" -eq 1
           grep -q 'Max_Tour-4.jpg' /tmp/proxy.html
+          curl -L -fsS "https://maxtourvietnam-hero-proxy.viiversion.workers.dev/api/tours?proxy_precheck=${GITHUB_SHA}" -o /tmp/proxy-tours.json
+          jq -e '.tours | length == 28' /tmp/proxy-tours.json >/dev/null
 
       - name: Switch custom domain to hero proxy
         shell: bash
