@@ -20,6 +20,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-      - name: Extend photo fix to catalog cards
+      - name: Inject photos into both live catalog cards
         shell: bash
-        run: bash tools/hotfix-max-tour-demo-card-selector.sh
+        run: bash tools/hotfix-max-tour-demo-two-photos.sh
