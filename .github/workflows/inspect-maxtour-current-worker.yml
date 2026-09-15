@@ -1,0 +1,35 @@
+name: Inspect MAX TOUR current Worker
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.inspect-maxtour-current-worker'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      SERVICE: maxtourvietnam
+    steps:
+      - name: Read current deployment metadata only
+        shell: bash
+        run: |
+          set -euo pipefail
+          auth=(-H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}")
+          echo '=== deployments ==='
+          curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/services/${SERVICE}/environments/production/deployments" "${auth[@]}" \
+            | jq '{success, errors, result: {id: .result.id, source: .result.source, strategy: .result.strategy, versions: [.result.versions[]? | {version_id, percentage}]}}'
+          echo '=== service ==='
+          curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/services/${SERVICE}" "${auth[@]}" \
+            | jq '{success, errors, result: {id: .result.id, default_environment: .result.default_environment, created_on: .result.created_on, modified_on: .result.modified_on}}'
+          echo '=== production settings ==='
+          curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/services/${SERVICE}/environments/production/settings" "${auth[@]}" \
+            | jq '{success, errors, result: {compatibility_date: .result.compatibility_date, compatibility_flags: .result.compatibility_flags, bindings: [.result.bindings[]? | {name,type,namespace_id,bucket_name,service,environment}]}}'
