@@ -1,0 +1,176 @@
+name: Hotfix maxtourvietnam hero
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.deploy-maxtourvietnam-hero'
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      TARGET_DOMAIN: maxtourvietnam.viiversion.com
+      WORKER_NAME: maxtourvietnam
+      DB_NAME: maxtourvietnam
+      ORIGINAL_HERO: https://static.tildacdn.one/tild3037-3338-4836-a362-336236666631/Max_Tour-4.jpg
+      OLD_HERO_ASSET: /mirror-media/370dd828995262c5f6.jpg
+
+    steps:
+      - name: Checkout maxtourvietnam source
+        uses: actions/checkout@v5
+        with:
+          repository: mirozdanie6v/maxtourvietnam
+          ref: main
+          path: maxtourvietnam
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Verify shared Cloudflare credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
+          echo 'Shared Cloudflare credentials are available.'
+
+      - name: Install deployment dependencies
+        working-directory: maxtourvietnam
+        run: npm install --no-audit --no-fund
+
+      - name: Mirror current production static bundle
+        working-directory: maxtourvietnam
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf dist
+          node --input-type=module <<'NODE'
+          import { mkdir, writeFile } from 'node:fs/promises';
+          import { dirname } from 'node:path';
+
+          const base = 'https://maxtourvietnam.viiversion.com';
+          const queue = ['/', '/tour-main/manifest.json'];
+          const seen = new Set();
+
+          const enqueue = (path) => {
+            if (!path || !path.startsWith('/')) return;
+            if (!/^\/(?:assets|mirror-media|tour-galleries|tour-main)\//.test(path)) return;
+            const clean = path.replace(/[?#].*$/, '');
+            if (!seen.has(clean)) queue.push(clean);
+          };
+
+          while (queue.length) {
+            const path = queue.shift();
+            const clean = path.replace(/[?#].*$/, '');
+            if (seen.has(clean)) continue;
+            seen.add(clean);
+
+            const response = await fetch(`${base}${path}?mirror_hotfix=20260915`, { redirect: 'follow' });
+            if (!response.ok) throw new Error(`Mirror fetch failed ${response.status}: ${path}`);
+            const bytes = Buffer.from(await response.arrayBuffer());
+            const out = clean === '/' ? 'dist/index.html' : `dist${clean}`;
+            await mkdir(dirname(out), { recursive: true });
+            await writeFile(out, bytes);
+
+            const type = response.headers.get('content-type') || '';
+            const textual = /text|javascript|json|svg|xml/.test(type) || /\.(?:html|js|css|json|svg)$/.test(clean);
+            if (textual) {
+              const text = bytes.toString('utf8');
+              for (const match of text.matchAll(/\/(?:assets|mirror-media|tour-galleries|tour-main)\/[^"'()<>\s\\]+/g)) {
+                enqueue(match[0]);
+              }
+              if (clean === '/tour-main/manifest.json') {
+                const manifest = JSON.parse(text);
+                for (const slug of Object.keys(manifest)) enqueue(`/tour-main/${slug}.html`);
+              }
+            }
+          }
+
+          console.log(`Mirrored ${seen.size} production static resources.`);
+          NODE
+          test -s dist/index.html
+          test -d dist/assets
+          test -d dist/mirror-media
+
+      - name: Patch hero to original MAX TOUR image
+        working-directory: maxtourvietnam
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { readFile, writeFile, copyFile } from 'node:fs/promises';
+
+          const indexPath = 'dist/index.html';
+          let index = await readFile(indexPath, 'utf8');
+          const match = index.match(/(?:src|href)=["'](\/assets\/index-[^"']+\.js)["']/);
+          if (!match) throw new Error('Current production JS bundle was not found in index.html');
+
+          const oldBundlePath = `dist${match[1]}`;
+          let js = await readFile(oldBundlePath, 'utf8');
+          const oldHero = process.env.OLD_HERO_ASSET;
+          const originalHero = process.env.ORIGINAL_HERO;
+          const before = js.split(oldHero).length - 1;
+          if (before < 1) throw new Error(`Old hero asset not found in production bundle: ${oldHero}`);
+          js = js.split(oldHero).join(originalHero);
+
+          const newPublicPath = '/assets/index-max-tour-4-20260915.js';
+          await writeFile(`dist${newPublicPath}`, js, 'utf8');
+          index = index.replace(match[1], newPublicPath);
+          await writeFile(indexPath, index, 'utf8');
+
+          console.log(`Patched ${before} hero reference(s) to Max_Tour-4.jpg.`);
+          NODE
+          grep -q '/assets/index-max-tour-4-20260915.js' dist/index.html
+          grep -q 'Max_Tour-4.jpg' dist/assets/index-max-tour-4-20260915.js
+          ! grep -q '/mirror-media/370dd828995262c5f6.jpg' dist/assets/index-max-tour-4-20260915.js
+
+      - name: Prepare D1 binding
+        working-directory: maxtourvietnam
+        shell: bash
+        run: |
+          set -euo pipefail
+          DB_ID="$(npx wrangler d1 list --json | jq -r --arg name "$DB_NAME" '.[] | select(.name == $name) | (.uuid // .id)' | head -n 1)"
+          test -n "$DB_ID" && test "$DB_ID" != "null"
+          jq --arg id "$DB_ID" --arg worker "$WORKER_NAME" '.name = $worker | .d1_databases[0].database_id = $id' wrangler.jsonc > wrangler.hero-hotfix.jsonc
+          echo "Using existing D1 database ${DB_NAME}."
+
+      - name: Deploy patched production bundle
+        working-directory: maxtourvietnam
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler deploy --config wrangler.hero-hotfix.jsonc
+
+      - name: Production verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://${TARGET_DOMAIN}"
+          ready=0
+          for attempt in $(seq 1 20); do
+            curl -L -fsS --connect-timeout 5 --max-time 20 "$base/?hero_hotfix=${GITHUB_SHA}-${attempt}" -o /tmp/home.html || true
+            if grep -q '/assets/index-max-tour-4-20260915.js' /tmp/home.html 2>/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 3
+          done
+          test "$ready" -eq 1
+          curl -L -fsS --connect-timeout 5 --max-time 20 "$base/assets/index-max-tour-4-20260915.js?hero_hotfix=${GITHUB_SHA}" -o /tmp/app.js
+          grep -q 'Max_Tour-4.jpg' /tmp/app.js
+          ! grep -q '/mirror-media/370dd828995262c5f6.jpg' /tmp/app.js
+          curl -L -fsS --connect-timeout 5 --max-time 20 "$base/api/health?hero_hotfix=${GITHUB_SHA}" -o /tmp/health.json
+          jq -e '.ok == true and .project == "maxtourvietnam"' /tmp/health.json >/dev/null
+          curl -L -fsS --connect-timeout 5 --max-time 20 "$base/api/tours?hero_hotfix=${GITHUB_SHA}" -o /tmp/tours.json
+          jq -e '.tours | length == 28' /tmp/tours.json >/dev/null
+          echo 'MAX TOUR hero hotfix is live and API remains healthy.'
