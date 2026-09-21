@@ -6,3 +6,4 @@ preserve=https://max-tour-demo.viiversion.com
 backoffice=ru-only
 vi_en_browser_smoke=passed
 locale_runtime=single
+verification=exact-source-sha
