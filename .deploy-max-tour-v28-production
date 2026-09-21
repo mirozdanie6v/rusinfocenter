@@ -1,9 +1,11 @@
 deploy max-tour production 2026-09-22 multilingual standalone-v28 RU-VI-EN
 source=mirozdanie6v/MAX-TOUR@production/max-tour-multilingual
-source_commit=10081a702317cd1937240386a70da772bfbd5210
+source_commit=7ce16bd8e8aebc8cbaf0ef3e9228d5ccc5ec1470
 target=https://max-tour.viiversion.com
 preserve=https://max-tour-demo.viiversion.com
 backoffice=ru-only
-vi_en_browser_smoke=passed
+vi_en_browser_smoke=passed-no-cyrillic-demo-data-ai-locale
 locale_runtime=single
 verification=exact-source-sha
+profile_seed=localized
+ai_history=locale-scoped
