@@ -2,10 +2,6 @@ name: Deploy MAX TOUR shared runner
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - '.deploy-max-tour'
 
 permissions:
   contents: read
