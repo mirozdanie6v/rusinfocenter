@@ -1,0 +1,6 @@
+source_branch=demo/vi-en-tour-operator
+source_sha=7a460f1b9278a7045e246dab435f63381f1d2285
+target=https://tour-operator-demo.viiversion.com
+mode=client-only
+locales=vi,en
+database=tour-operator-client-demo-db
