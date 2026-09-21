@@ -28,11 +28,11 @@ jobs:
       MAX_TOUR_PROD_HOST: max-tour.viiversion.com
 
     steps:
-      - name: Checkout exact live demo source
+      - name: Checkout multilingual Standalone v28 source
         uses: actions/checkout@v5
         with:
           repository: mirozdanie6v/MAX-TOUR
-          ref: demo/max-tour-demo
+          ref: production/max-tour-multilingual
           path: max-tour
 
       - name: Setup Node.js
@@ -49,6 +49,10 @@ jobs:
           npm test
           npm run build
           grep -Fq 'MaxTour Mini App Prototype v28' dist/index.html
+          grep -Fq 'i18n-v1.css' dist/index.html
+          grep -Fq 'i18n-v1.js' dist/index.html
+          grep -Fq 'max-tour-locale-v1' dist/i18n-v1.js
+          grep -Fq 'VI_TOURS' dist/i18n-v1.js
           grep -Fq 'Кабинет администратора' dist/admin/index.html
           grep -Fq 'Кабинет директора' dist/director/index.html
           test "$(node -e "console.log(JSON.parse(require('fs').readFileSync('dist/catalog.v28.json','utf8')).length)")" = "15"
@@ -208,7 +212,7 @@ jobs:
             admin=$(curl -L -sS --connect-timeout 5 --max-time 25 -o /tmp/admin.html -w '%{http_code}' "$base/admin/?deploy=${GITHUB_SHA}" || true)
             director=$(curl -L -sS --connect-timeout 5 --max-time 25 -o /tmp/director.html -w '%{http_code}' "$base/director/?deploy=${GITHUB_SHA}" || true)
             health=$(curl -L -sS --connect-timeout 5 --max-time 25 -o /tmp/health.json -w '%{http_code}' "$base/api/health?deploy=${GITHUB_SHA}" || true)
-            if [ "$home" = "200" ] && [ "$admin" = "200" ] && [ "$director" = "200" ] && [ "$health" = "200" ] && grep -Fq 'MaxTour Mini App Prototype v28' /tmp/home.html && grep -Fq 'production-polish.css' /tmp/home.html && grep -Fq 'Кабинет администратора' /tmp/admin.html && grep -Fq 'Кабинет директора' /tmp/director.html && [ "$(jq -r '.app' /tmp/health.json)" = "max-tour-v28-standalone" ]; then
+            if [ "$home" = "200" ] && [ "$admin" = "200" ] && [ "$director" = "200" ] && [ "$health" = "200" ] && grep -Fq 'MaxTour Mini App Prototype v28' /tmp/home.html && grep -Fq 'production-polish.css' /tmp/home.html && grep -Fq 'i18n-v1.css' /tmp/home.html && grep -Fq 'i18n-v1.js' /tmp/home.html && grep -Fq 'Кабинет администратора' /tmp/admin.html && grep -Fq 'Кабинет директора' /tmp/director.html && [ "$(jq -r '.app' /tmp/health.json)" = "max-tour-v28-standalone" ]; then
               ok=1
               break
             fi
@@ -217,4 +221,8 @@ jobs:
           test "$ok" -eq 1
           curl -L -fsS "$base/catalog.v28.json?deploy=${GITHUB_SHA}" -o /tmp/catalog.json
           jq -e 'length == 15 and any(.id == "dalat-premium")' /tmp/catalog.json >/dev/null
-          echo 'MAX TOUR production now serves exact Standalone v28 source with production typography polish.'
+          curl -L -fsS "$base/i18n-v1.js?deploy=${GITHUB_SHA}" -o /tmp/i18n.js
+          grep -Fq 'max-tour-locale-v1' /tmp/i18n.js
+          grep -Fq 'VI_TOURS' /tmp/i18n.js
+          grep -Fq "locale = localStorage.getItem(STORAGE_KEY) === 'vi' ? 'vi' : 'ru'" /tmp/i18n.js
+          echo 'MAX TOUR production serves multilingual Standalone v28 (RU/VI).'
