@@ -75,6 +75,8 @@ jobs:
           grep -Fq 'data-locale="en"' dist/i18n-v1.js
           ! grep -Fq 'MutationObserver' dist/i18n-en-v1.js
           ! grep -Fq 'window.fetch = async function' dist/i18n-en-v1.js
+          printf '%s\n' "${{ steps.source.outputs.sha }}" > dist/source-version.txt
+          test "$(cat dist/source-version.txt)" = "${{ steps.source.outputs.sha }}"
           grep -Fq 'Кабинет администратора' dist/admin/index.html
           grep -Fq 'Кабинет директора' dist/director/index.html
           test "$(node -e "console.log(JSON.parse(require('fs').readFileSync('dist/catalog.v28.json','utf8')).length)")" = "15"
@@ -234,7 +236,10 @@ jobs:
             admin=$(curl -L -sS --connect-timeout 5 --max-time 25 -o /tmp/admin.html -w '%{http_code}' "$base/admin/?deploy=${GITHUB_SHA}" || true)
             director=$(curl -L -sS --connect-timeout 5 --max-time 25 -o /tmp/director.html -w '%{http_code}' "$base/director/?deploy=${GITHUB_SHA}" || true)
             health=$(curl -L -sS --connect-timeout 5 --max-time 25 -o /tmp/health.json -w '%{http_code}' "$base/api/health?deploy=${GITHUB_SHA}" || true)
-            if [ "$home" = "200" ] && [ "$admin" = "200" ] && [ "$director" = "200" ] && [ "$health" = "200" ] && grep -Fq 'MaxTour Mini App Prototype v28' /tmp/home.html && grep -Fq 'production-polish.css' /tmp/home.html && grep -Fq 'i18n-v1.css' /tmp/home.html && grep -Fq 'i18n-v1.js' /tmp/home.html && grep -Fq 'Кабинет администратора' /tmp/admin.html && grep -Fq 'Кабинет директора' /tmp/director.html && [ "$(jq -r '.app' /tmp/health.json)" = "max-tour-v28-standalone" ]; then
+            version=$(curl -L -sS --connect-timeout 5 --max-time 25 -o /tmp/source-version.txt -w '%{http_code}' "$base/source-version.txt?deploy=${GITHUB_SHA}" || true)
+            i18n=$(curl -L -sS --connect-timeout 5 --max-time 25 -o /tmp/i18n.js -w '%{http_code}' "$base/i18n-v1.js?deploy=${GITHUB_SHA}" || true)
+            i18n_en=$(curl -L -sS --connect-timeout 5 --max-time 25 -o /tmp/i18n-en.js -w '%{http_code}' "$base/i18n-en-v1.js?deploy=${GITHUB_SHA}" || true)
+            if [ "$home" = "200" ] && [ "$admin" = "200" ] && [ "$director" = "200" ] && [ "$health" = "200" ] && [ "$version" = "200" ] && [ "$i18n" = "200" ] && [ "$i18n_en" = "200" ] && grep -Fq 'MaxTour Mini App Prototype v28' /tmp/home.html && grep -Fq 'production-polish.css' /tmp/home.html && grep -Fq 'i18n-v1.css' /tmp/home.html && grep -Fq 'i18n-v1.js' /tmp/home.html && grep -Fq 'Кабинет администратора' /tmp/admin.html && grep -Fq 'Кабинет директора' /tmp/director.html && [ "$(jq -r '.app' /tmp/health.json)" = "max-tour-v28-standalone" ] && [ "$(tr -d '\r\n' < /tmp/source-version.txt)" = "${{ steps.source.outputs.sha }}" ] && grep -Fq 'data-locale="en"' /tmp/i18n.js && grep -Fq 'MaxTourLocaleData.en' /tmp/i18n-en.js; then
               ok=1
               break
             fi
@@ -243,6 +248,7 @@ jobs:
           test "$ok" -eq 1
           curl -L -fsS "$base/catalog.v28.json?deploy=${GITHUB_SHA}" -o /tmp/catalog.json
           jq -e 'length == 15 and any(.id == "dalat-premium")' /tmp/catalog.json >/dev/null
+          test "$(tr -d '\r\n' < /tmp/source-version.txt)" = "${{ steps.source.outputs.sha }}"
           curl -L -fsS "$base/i18n-v1.js?deploy=${GITHUB_SHA}" -o /tmp/i18n.js
           curl -L -fsS "$base/i18n-en-v1.js?deploy=${GITHUB_SHA}" -o /tmp/i18n-en.js
           grep -Fq 'max-tour-locale-v1' /tmp/i18n.js
