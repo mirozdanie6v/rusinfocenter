@@ -175,11 +175,11 @@ jobs:
 
           if [ -n "$domain_id" ] && [ "$domain_id" != "null" ] && [ "$current_service" != "$MAX_TOUR_PROD_SERVICE" ]; then
             echo "Detaching ${MAX_TOUR_PROD_HOST} from ${current_service:-unknown} before restore."
-            detached=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains/${domain_id}" \
+            detach_code=$(curl -sS -o /tmp/max-tour-domain-detach.json -w '%{http_code}' "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains/${domain_id}" \
               -X DELETE \
               -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}")
-            echo "$detached" | jq '{success,errors}'
-            test "$(echo "$detached" | jq -r '.success')" = "true"
+            test "$detach_code" = "200" -o "$detach_code" = "204"
+            if [ -s /tmp/max-tour-domain-detach.json ]; then cat /tmp/max-tour-domain-detach.json | jq '{success,errors}' || cat /tmp/max-tour-domain-detach.json; fi
             sleep 2
             current_service=''
           fi
