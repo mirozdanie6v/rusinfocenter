@@ -1,3 +1,4 @@
-deploy max-tour production 2026-09-21 restore exact client demo final rebind
-source=mirozdanie6v/MAX-TOUR@demo/max-tour-demo
+deploy max-tour production 2026-09-21 multilingual standalone-v28 RU-VI
+source=mirozdanie6v/MAX-TOUR@production/max-tour-multilingual
 target=https://max-tour.viiversion.com
+preserve=https://max-tour-demo.viiversion.com
