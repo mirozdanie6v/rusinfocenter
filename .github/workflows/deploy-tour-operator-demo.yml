@@ -1,0 +1,183 @@
+name: Deploy Tour Operator VI-EN Client Demo
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.deploy-tour-operator-demo'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tour-operator-client-demo
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      VIIVERSION_ZONE_ID: 56fa9423ef85e05559f453af43ec400f
+      CLIENT_DB: tour-operator-client-demo-db
+      CLIENT_SERVICE: tour-operator-client-demo
+      CLIENT_HOST: tour-operator-demo.viiversion.com
+
+    steps:
+      - name: Checkout deploy control
+        uses: actions/checkout@v5
+        with:
+          path: deploy-control
+
+      - name: Resolve exact source commit
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha=$(sed -n 's/^source_sha=//p' deploy-control/.deploy-tour-operator-demo | head -n1)
+          test -n "$sha"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout exact VI-EN client source
+        uses: actions/checkout@v5
+        with:
+          repository: mirozdanie6v/MAX-TOUR
+          ref: ${{ steps.source.outputs.sha }}
+          path: max-tour
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Verify and build client-only demo
+        working-directory: max-tour/standalone-v28
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --ignore-scripts --no-audit --no-fund --package-lock=false
+          node --check src/worker.js
+          node --check src/client-demo/app.js
+          node --check src/client-demo/ui-locales.js
+          npm test
+          npm run build:client-demo
+          grep -Fq 'client-demo.js' dist/index.html
+          grep -Fq 'client-demo.css' dist/index.html
+          test ! -d dist/admin
+          test ! -d dist/director
+          test "$(node -e "console.log(JSON.parse(require('fs').readFileSync('dist/catalog.v28.json','utf8')).length)")" = "15"
+          test "$(node -e "console.log(Object.keys(JSON.parse(require('fs').readFileSync('dist/client-locales/vi-tours.json','utf8'))).length)")" = "15"
+          test "$(node -e "console.log(Object.keys(JSON.parse(require('fs').readFileSync('dist/client-locales/en-tours.json','utf8'))).length)")" = "15"
+
+      - name: Resolve or create isolated client D1
+        id: d1
+        working-directory: max-tour/standalone-v28
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s\n' '{"compatibility_date":"2026-09-09"}' > /tmp/wrangler-empty.jsonc
+          npx wrangler d1 list --json --config /tmp/wrangler-empty.jsonc > /tmp/d1.json
+          db_id=$(jq -r --arg name "$CLIENT_DB" '.[] | select(.name == $name) | .uuid' /tmp/d1.json | head -n1)
+          if [ -z "$db_id" ] || [ "$db_id" = "null" ]; then
+            npx wrangler d1 create "$CLIENT_DB" --config /tmp/wrangler-empty.jsonc
+            npx wrangler d1 list --json --config /tmp/wrangler-empty.jsonc > /tmp/d1.json
+            db_id=$(jq -r --arg name "$CLIENT_DB" '.[] | select(.name == $name) | .uuid' /tmp/d1.json | head -n1)
+          fi
+          test -n "$db_id"
+          test "$db_id" != "null"
+          echo "database_id=$db_id" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare isolated Cloudflare config
+        working-directory: max-tour/standalone-v28
+        env:
+          CLIENT_D1_DATABASE_ID: ${{ steps.d1.outputs.database_id }}
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const cfg = JSON.parse(fs.readFileSync('wrangler.jsonc','utf8'));
+          cfg.name = process.env.CLIENT_SERVICE;
+          cfg.vars = {
+            ...(cfg.vars || {}),
+            APP_ENV: 'client-demo-vi-en',
+            APP_URL: `https://${process.env.CLIENT_HOST}`,
+            CLIENT_ONLY: 'true',
+            PUBLIC_ADMIN_DEMO: 'false'
+          };
+          cfg.d1_databases[0].database_name = process.env.CLIENT_DB;
+          cfg.d1_databases[0].database_id = process.env.CLIENT_D1_DATABASE_ID;
+          delete cfg.routes;
+          fs.writeFileSync('wrangler.client-demo.jsonc', JSON.stringify(cfg,null,2)+'\n');
+          NODE
+          grep -Fq '"CLIENT_ONLY": "true"' wrangler.client-demo.jsonc
+          grep -Fq "$CLIENT_DB" wrangler.client-demo.jsonc
+
+      - name: Apply isolated migrations
+        working-directory: max-tour/standalone-v28
+        run: npx wrangler d1 migrations apply "$CLIENT_DB" --remote --config wrangler.client-demo.jsonc
+
+      - name: Deploy client-only Worker and assets
+        working-directory: max-tour/standalone-v28
+        run: npx wrangler deploy --config wrangler.client-demo.jsonc
+
+      - name: Attach client demo domain
+        shell: bash
+        run: |
+          set -euo pipefail
+          domains=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains"             -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}")
+          domain_id=$(echo "$domains" | jq -r --arg host "$CLIENT_HOST" '.result[]? | select(.hostname == $host) | .id' | head -n1)
+          current_service=$(echo "$domains" | jq -r --arg host "$CLIENT_HOST" '.result[]? | select(.hostname == $host) | .service' | head -n1)
+
+          if [ -n "$domain_id" ] && [ "$domain_id" != "null" ] && [ "$current_service" != "$CLIENT_SERVICE" ]; then
+            code=$(curl -sS -o /tmp/client-domain-detach.json -w '%{http_code}' "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains/${domain_id}"               -X DELETE -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}")
+            test "$code" = "200" -o "$code" = "204"
+            sleep 2
+            current_service=''
+          fi
+
+          if [ "$current_service" != "$CLIENT_SERVICE" ]; then
+            response=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains"               -X PUT               -H 'Content-Type: application/json'               -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}"               --data "{\"hostname\":\"${CLIENT_HOST}\",\"service\":\"${CLIENT_SERVICE}\",\"zone_id\":\"${VIIVERSION_ZONE_ID}\",\"zone_name\":\"viiversion.com\"}")
+            echo "$response" | jq '{success,result:{hostname:.result.hostname,service:.result.service},errors}'
+            test "$(echo "$response" | jq -r '.success')" = "true"
+            test "$(echo "$response" | jq -r '.result.hostname')" = "$CLIENT_HOST"
+            test "$(echo "$response" | jq -r '.result.service')" = "$CLIENT_SERVICE"
+          fi
+
+      - name: Verify live VI-EN client-only demo
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://${CLIENT_HOST}"
+          ok=0
+          for attempt in $(seq 1 30); do
+            home=$(curl -L -sS --connect-timeout 5 --max-time 25 -o /tmp/home.html -w '%{http_code}' "$base/?deploy=${GITHUB_SHA}" || true)
+            health=$(curl -L -sS --connect-timeout 5 --max-time 25 -o /tmp/health.json -w '%{http_code}' "$base/api/health?deploy=${GITHUB_SHA}" || true)
+            admin=$(curl -L -sS --connect-timeout 5 --max-time 25 -o /tmp/admin.txt -w '%{http_code}' "$base/admin/?deploy=${GITHUB_SHA}" || true)
+            director=$(curl -L -sS --connect-timeout 5 --max-time 25 -o /tmp/director.txt -w '%{http_code}' "$base/director/?deploy=${GITHUB_SHA}" || true)
+            if [ "$home" = "200" ] && [ "$health" = "200" ] && [ "$admin" = "404" ] && [ "$director" = "404" ] && grep -Fq 'client-demo.js' /tmp/home.html && [ "$(jq -r '.app' /tmp/health.json)" = "max-tour-v28-standalone" ]; then
+              ok=1
+              break
+            fi
+            sleep 5
+          done
+          test "$ok" -eq 1
+
+          curl -L -fsS "$base/catalog.v28.json?deploy=${GITHUB_SHA}" -o /tmp/catalog.json
+          jq -e 'length == 15 and any(.id == "dalat-premium")' /tmp/catalog.json >/dev/null
+
+          curl -L -fsS "$base/client-locales/vi-tours.json?deploy=${GITHUB_SHA}" -o /tmp/vi.json
+          curl -L -fsS "$base/client-locales/en-tours.json?deploy=${GITHUB_SHA}" -o /tmp/en.json
+          jq -e 'keys | length == 15' /tmp/vi.json >/dev/null
+          jq -e 'keys | length == 15' /tmp/en.json >/dev/null
+
+          vi_ai=$(curl -L -fsS "$base/api/ai/chat" -H 'content-type: application/json' --data '{"locale":"vi","message":""}')
+          en_ai=$(curl -L -fsS "$base/api/ai/chat" -H 'content-type: application/json' --data '{"locale":"en","message":""}')
+          test "$(echo "$vi_ai" | jq -r '.ok')" = "true"
+          test "$(echo "$en_ai" | jq -r '.ok')" = "true"
+          echo "$en_ai" | jq -e '.reply | test("[А-Яа-яЁё]") | not' >/dev/null
+
+          echo "Tour operator client demo is live: VI/EN, client-only, isolated D1."
