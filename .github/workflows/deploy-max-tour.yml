@@ -116,6 +116,12 @@ jobs:
           cat /tmp/health.json
           jq -e '.ok == true and .database == "D1"' /tmp/health.json >/dev/null
 
+          curl -L -fsS "$base/api/tours?lang=vi" -o /tmp/tours-vi.json
+          jq -e '.items | length >= 8' /tmp/tours-vi.json >/dev/null
+          jq -e '.items[] | select(.id == "dalat-premium" and .title == "Tour Đà Lạt “Premium”")' /tmp/tours-vi.json >/dev/null
+          jq -e '.items[] | select(.id == "nha-day" and .title == "City tour Nha Trang ban ngày")' /tmp/tours-vi.json >/dev/null
+          echo 'MAX TOUR Vietnamese API smoke passed.'
+
           tracker=$(curl -L -fsS 'https://dashboard.viiversion.com/tracker.js')
           echo "$tracker" | grep -Fq "storageHandle('localStorage')"
           echo "$tracker" | grep -Fq 'tgWebAppPlatform'
