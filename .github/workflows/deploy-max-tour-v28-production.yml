@@ -167,16 +167,36 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          response=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains" \
-            -X PUT \
-            -H 'Content-Type: application/json' \
-            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-            --data "{\"hostname\":\"${MAX_TOUR_PROD_HOST}\",\"service\":\"${MAX_TOUR_PROD_SERVICE}\",\"zone_id\":\"${VIIVERSION_ZONE_ID}\",\"zone_name\":\"viiversion.com\"}")
-          echo "$response" | jq '{success,result:{hostname:.result.hostname,service:.result.service},errors}'
-          test "$(echo "$response" | jq -r '.success')" = "true"
-          test "$(echo "$response" | jq -r '.result.hostname')" = "$MAX_TOUR_PROD_HOST"
-          test "$(echo "$response" | jq -r '.result.service')" = "$MAX_TOUR_PROD_SERVICE"
 
+          domains=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains" \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}")
+          domain_id=$(echo "$domains" | jq -r --arg host "$MAX_TOUR_PROD_HOST" '.result[]? | select(.hostname == $host) | .id' | head -n1)
+          current_service=$(echo "$domains" | jq -r --arg host "$MAX_TOUR_PROD_HOST" '.result[]? | select(.hostname == $host) | .service' | head -n1)
+
+          if [ -n "$domain_id" ] && [ "$domain_id" != "null" ] && [ "$current_service" != "$MAX_TOUR_PROD_SERVICE" ]; then
+            echo "Detaching ${MAX_TOUR_PROD_HOST} from ${current_service:-unknown} before restore."
+            detached=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains/${domain_id}" \
+              -X DELETE \
+              -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}")
+            echo "$detached" | jq '{success,errors}'
+            test "$(echo "$detached" | jq -r '.success')" = "true"
+            sleep 2
+            current_service=''
+          fi
+
+          if [ "$current_service" = "$MAX_TOUR_PROD_SERVICE" ]; then
+            echo "${MAX_TOUR_PROD_HOST} is already attached to ${MAX_TOUR_PROD_SERVICE}."
+          else
+            response=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains" \
+              -X PUT \
+              -H 'Content-Type: application/json' \
+              -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+              --data "{\"hostname\":\"${MAX_TOUR_PROD_HOST}\",\"service\":\"${MAX_TOUR_PROD_SERVICE}\",\"zone_id\":\"${VIIVERSION_ZONE_ID}\",\"zone_name\":\"viiversion.com\"}")
+            echo "$response" | jq '{success,result:{hostname:.result.hostname,service:.result.service},errors}'
+            test "$(echo "$response" | jq -r '.success')" = "true"
+            test "$(echo "$response" | jq -r '.result.hostname')" = "$MAX_TOUR_PROD_HOST"
+            test "$(echo "$response" | jq -r '.result.service')" = "$MAX_TOUR_PROD_SERVICE"
+          fi
       - name: Verify live production is Standalone v28
         shell: bash
         run: |
