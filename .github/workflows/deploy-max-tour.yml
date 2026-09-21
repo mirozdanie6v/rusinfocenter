@@ -1,10 +1,6 @@
 name: Deploy MAX TOUR to Cloudflare
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.deploy-max-tour'
   workflow_dispatch:
 
 permissions:
