@@ -61,6 +61,7 @@ jobs:
           set -euo pipefail
           npm install --ignore-scripts --no-audit --no-fund --package-lock=false
           node --check src/i18n-en-v1.js
+          node --check src/i18n-ko-v1.js
           node --check src/i18n-v1.js
           node --check src/worker.js
           npm test
@@ -68,13 +69,18 @@ jobs:
           grep -Fq 'MaxTour Mini App Prototype v28' dist/index.html
           grep -Fq 'i18n-v1.css' dist/index.html
           grep -Fq 'i18n-en-v1.js' dist/index.html
+          grep -Fq 'i18n-ko-v1.js' dist/index.html
           grep -Fq 'i18n-v1.js' dist/index.html
           grep -Fq 'max-tour-locale-v1' dist/i18n-v1.js
           grep -Fq 'VI_TOURS' dist/i18n-v1.js
           grep -Fq 'MaxTourLocaleData.en' dist/i18n-en-v1.js
+          grep -Fq 'MaxTourLocaleData.ko' dist/i18n-ko-v1.js
           grep -Fq 'data-locale="en"' dist/i18n-v1.js
+          grep -Fq 'data-locale="ko"' dist/i18n-v1.js
           ! grep -Fq 'MutationObserver' dist/i18n-en-v1.js
           ! grep -Fq 'window.fetch = async function' dist/i18n-en-v1.js
+          ! grep -Fq 'MutationObserver' dist/i18n-ko-v1.js
+          ! grep -Fq 'window.fetch = async function' dist/i18n-ko-v1.js
           printf '%s\n' "${{ steps.source.outputs.sha }}" > dist/source-version.txt
           test "$(cat dist/source-version.txt)" = "${{ steps.source.outputs.sha }}"
           grep -Fq 'Кабинет администратора' dist/admin/index.html
@@ -239,7 +245,8 @@ jobs:
             version=$(curl -L -sS --connect-timeout 5 --max-time 25 -o /tmp/source-version.txt -w '%{http_code}' "$base/source-version.txt?deploy=${GITHUB_SHA}" || true)
             i18n=$(curl -L -sS --connect-timeout 5 --max-time 25 -o /tmp/i18n.js -w '%{http_code}' "$base/i18n-v1.js?deploy=${GITHUB_SHA}" || true)
             i18n_en=$(curl -L -sS --connect-timeout 5 --max-time 25 -o /tmp/i18n-en.js -w '%{http_code}' "$base/i18n-en-v1.js?deploy=${GITHUB_SHA}" || true)
-            if [ "$home" = "200" ] && [ "$admin" = "200" ] && [ "$director" = "200" ] && [ "$health" = "200" ] && [ "$version" = "200" ] && [ "$i18n" = "200" ] && [ "$i18n_en" = "200" ] && grep -Fq 'MaxTour Mini App Prototype v28' /tmp/home.html && grep -Fq 'production-polish.css' /tmp/home.html && grep -Fq 'i18n-v1.css' /tmp/home.html && grep -Fq 'i18n-v1.js' /tmp/home.html && grep -Fq 'Кабинет администратора' /tmp/admin.html && grep -Fq 'Кабинет директора' /tmp/director.html && [ "$(jq -r '.app' /tmp/health.json)" = "max-tour-v28-standalone" ] && [ "$(tr -d '\r\n' < /tmp/source-version.txt)" = "${{ steps.source.outputs.sha }}" ] && grep -Fq 'data-locale="en"' /tmp/i18n.js && grep -Fq 'MaxTourLocaleData.en' /tmp/i18n-en.js; then
+            i18n_ko=$(curl -L -sS --connect-timeout 5 --max-time 25 -o /tmp/i18n-ko.js -w '%{http_code}' "$base/i18n-ko-v1.js?deploy=${GITHUB_SHA}" || true)
+            if [ "$home" = "200" ] && [ "$admin" = "200" ] && [ "$director" = "200" ] && [ "$health" = "200" ] && [ "$version" = "200" ] && [ "$i18n" = "200" ] && [ "$i18n_en" = "200" ] && [ "$i18n_ko" = "200" ] && grep -Fq 'MaxTour Mini App Prototype v28' /tmp/home.html && grep -Fq 'production-polish.css' /tmp/home.html && grep -Fq 'i18n-v1.css' /tmp/home.html && grep -Fq 'i18n-v1.js' /tmp/home.html && grep -Fq 'Кабинет администратора' /tmp/admin.html && grep -Fq 'Кабинет директора' /tmp/director.html && [ "$(jq -r '.app' /tmp/health.json)" = "max-tour-v28-standalone" ] && [ "$(tr -d '\r\n' < /tmp/source-version.txt)" = "${{ steps.source.outputs.sha }}" ] && grep -Fq 'data-locale="en"' /tmp/i18n.js && grep -Fq 'data-locale="ko"' /tmp/i18n.js && grep -Fq 'MaxTourLocaleData.en' /tmp/i18n-en.js && grep -Fq 'MaxTourLocaleData.ko' /tmp/i18n-ko.js; then
               ok=1
               break
             fi
@@ -251,16 +258,21 @@ jobs:
           test "$(tr -d '\r\n' < /tmp/source-version.txt)" = "${{ steps.source.outputs.sha }}"
           curl -L -fsS "$base/i18n-v1.js?deploy=${GITHUB_SHA}" -o /tmp/i18n.js
           curl -L -fsS "$base/i18n-en-v1.js?deploy=${GITHUB_SHA}" -o /tmp/i18n-en.js
+          curl -L -fsS "$base/i18n-ko-v1.js?deploy=${GITHUB_SHA}" -o /tmp/i18n-ko.js
           grep -Fq 'max-tour-locale-v1' /tmp/i18n.js
           grep -Fq 'VI_TOURS' /tmp/i18n.js
           grep -Fq 'data-locale="en"' /tmp/i18n.js
+          grep -Fq 'data-locale="ko"' /tmp/i18n.js
           grep -Fq 'MaxTourLocaleData.en' /tmp/i18n-en.js
+          grep -Fq 'MaxTourLocaleData.ko' /tmp/i18n-ko.js
           ! grep -Fq 'MutationObserver' /tmp/i18n-en.js
           ! grep -Fq 'window.fetch = async function' /tmp/i18n-en.js
-          echo 'MAX TOUR production serves multilingual Standalone v28 (RU/VI/EN) with one locale runtime.'
+          ! grep -Fq 'MutationObserver' /tmp/i18n-ko.js
+          ! grep -Fq 'window.fetch = async function' /tmp/i18n-ko.js
+          echo 'MAX TOUR production serves multilingual Standalone v28 (RU/VI/EN/KO) with one locale runtime.'
 
 
-      - name: Browser smoke live production VI and EN
+      - name: Browser smoke live production VI, EN and KO
         working-directory: max-tour/standalone-v28
         shell: bash
         env:
