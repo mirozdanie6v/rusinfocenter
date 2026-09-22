@@ -265,6 +265,7 @@ jobs:
         shell: bash
         env:
           I18N_TEST_URL: https://max-tour.viiversion.com/
+          I18N_LIVE_AI: '1'
         run: |
           set -euo pipefail
           npm install --no-save --ignore-scripts --no-audit --no-fund playwright@1.55.0
