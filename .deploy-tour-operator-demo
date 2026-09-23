@@ -1,5 +1,5 @@
 source_branch=demo/vi-en-tour-operator
-source_sha=edb4298e4b0c0e485b91a3dfbb26a6f1a4272aa4
+source_sha=7aa18165a352be17d27a038b26f3016de75efaba
 target=https://tour-operator-demo.viiversion.com
 mode=client-only
 locales=vi,en
