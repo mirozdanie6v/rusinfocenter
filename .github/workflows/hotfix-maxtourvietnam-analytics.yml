@@ -13,71 +13,81 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 12
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CF_ZONE_ID: 56fa9423ef85e05559f453af43ec400f
       TARGET_DOMAIN: maxtourvietnam.viiversion.com
-      WORKER_NAME: maxtourvietnam
-      DB_NAME: maxtourvietnam
+      ORIGIN_WORKER: maxtourvietnam
+      PROXY_WORKER: maxtourvietnam-analytics-proxy
 
     steps:
-      - name: Checkout maxtourvietnam source
-        uses: actions/checkout@v5
-        with:
-          repository: mirozdanie6v/maxtourvietnam
-          ref: main
-          path: maxtourvietnam
-
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
           node-version: 22
 
-      - name: Install and build committed production source
-        working-directory: maxtourvietnam
+      - name: Create analytics proxy with service binding
         shell: bash
         run: |
           set -euo pipefail
-          npm install --no-audit --no-fund
-          npm run build
-          grep -Fq 'dashboard.viiversion.com/tracker.js' dist/index.html
-          grep -Fq 'telegram.org/js/telegram-web-app.js?63' dist/index.html
-          test "$(find dist/tour-main -maxdepth 1 -type f -name '*.html' | wc -l)" -eq 28
-          test -d dist/mirror-media
-          test -d dist/tour-galleries
-          grep -R -q '/mirror-media/' dist/tour-main
-          echo 'Committed production source bundle contains Telegram analytics and all 28 tour pages.'
+          mkdir -p /tmp/maxtour-analytics-proxy
+          cat > /tmp/maxtour-analytics-proxy/worker.js <<'EOF'
+          export default {
+            async fetch(request, env) {
+              const response = await env.ORIGIN.fetch(request);
+              const contentType = response.headers.get('content-type') || '';
+              if (!contentType.includes('text/html')) return response;
 
-      - name: Prepare existing D1 binding
-        working-directory: maxtourvietnam
+              let html = await response.text();
+              if (!html.includes('telegram.org/js/telegram-web-app.js')) {
+                html = html.replace('</head>', '<script src="https://telegram.org/js/telegram-web-app.js?63"></script></head>');
+              }
+              if (!html.includes('dashboard.viiversion.com/tracker.js')) {
+                html = html.replace('</body>', '<script defer src="https://dashboard.viiversion.com/tracker.js" data-project="MAX TOUR Vietnam"></script></body>');
+              }
+              const headers = new Headers(response.headers);
+              headers.delete('content-length');
+              headers.set('cache-control', 'no-store');
+              return new Response(html, { status: response.status, statusText: response.statusText, headers });
+            }
+          };
+          EOF
+          cat > /tmp/maxtour-analytics-proxy/wrangler.jsonc <<EOF
+          {
+            "name": "${PROXY_WORKER}",
+            "main": "worker.js",
+            "compatibility_date": "2026-09-23",
+            "services": [
+              {
+                "binding": "ORIGIN",
+                "service": "${ORIGIN_WORKER}"
+              }
+            ]
+          }
+          EOF
+
+      - name: Deploy analytics proxy
+        working-directory: /tmp/maxtour-analytics-proxy
+        run: npx --yes wrangler@latest deploy --config wrangler.jsonc
+
+      - name: Attach production custom domain to analytics proxy
         shell: bash
         run: |
           set -euo pipefail
-          DB_ID="$(npx wrangler d1 list --json | jq -r --arg name "$DB_NAME" '.[] | select(.name == $name) | (.uuid // .id)' | head -n 1)"
-          test -n "$DB_ID" && test "$DB_ID" != "null"
-          jq --arg id "$DB_ID" --arg worker "$WORKER_NAME" '.name = $worker | .d1_databases[0].database_id = $id' wrangler.jsonc > wrangler.analytics-hotfix.jsonc
-
-      - name: Deploy code and assets without D1 reseed
-        working-directory: maxtourvietnam
-        run: npx wrangler deploy --config wrangler.analytics-hotfix.jsonc
-
-      - name: Reattach production custom domain
-        shell: bash
-        run: |
-          set -euo pipefail
-          response=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains"             -X PUT             -H 'Content-Type: application/json'             -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}"             --data "{\"hostname\":\"${TARGET_DOMAIN}\",\"service\":\"${WORKER_NAME}\",\"zone_id\":\"${CF_ZONE_ID}\",\"zone_name\":\"viiversion.com\"}")
+          response=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains"             -X PUT             -H 'Content-Type: application/json'             -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}"             --data "{\"hostname\":\"${TARGET_DOMAIN}\",\"service\":\"${PROXY_WORKER}\",\"zone_id\":\"${CF_ZONE_ID}\",\"zone_name\":\"viiversion.com\"}")
           test "$(echo "$response" | jq -r '.success')" = "true"
+          test "$(echo "$response" | jq -r '.result.service')" = "$PROXY_WORKER"
 
-      - name: Verify production analytics and API
+      - name: Verify production content and API are unchanged plus analytics
         shell: bash
         run: |
           set -euo pipefail
           base="https://${TARGET_DOMAIN}"
           ready=0
           for attempt in $(seq 1 20); do
-            curl -L -fsS --connect-timeout 5 --max-time 20 "$base/?analytics_hotfix=${GITHUB_SHA}-$attempt" -o /tmp/home.html || true
+            curl -L -fsS --connect-timeout 5 --max-time 20 "$base/?analytics_proxy=${GITHUB_SHA}-$attempt" -o /tmp/home.html || true
             if grep -Fq 'dashboard.viiversion.com/tracker.js' /tmp/home.html && grep -Fq 'telegram.org/js/telegram-web-app.js?63' /tmp/home.html; then
               ready=1
               break
@@ -85,8 +95,8 @@ jobs:
             sleep 3
           done
           test "$ready" -eq 1
-          curl -L -fsS "$base/api/health?analytics_hotfix=${GITHUB_SHA}" -o /tmp/health.json
+          curl -L -fsS "$base/api/health?analytics_proxy=${GITHUB_SHA}" -o /tmp/health.json
           jq -e '.ok == true and .project == "maxtourvietnam"' /tmp/health.json >/dev/null
-          curl -L -fsS "$base/api/tours?analytics_hotfix=${GITHUB_SHA}" -o /tmp/tours.json
+          curl -L -fsS "$base/api/tours?analytics_proxy=${GITHUB_SHA}" -o /tmp/tours.json
           jq -e '.tours | length == 28' /tmp/tours.json >/dev/null
-          echo 'MAX TOUR Vietnam Telegram analytics hotfix is live; D1 was not reseeded.'
+          echo 'MAX TOUR Vietnam is proxied to the existing production Worker with Telegram analytics injected.'
