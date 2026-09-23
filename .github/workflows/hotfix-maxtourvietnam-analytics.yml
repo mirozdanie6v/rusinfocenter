@@ -72,12 +72,44 @@ jobs:
         working-directory: /tmp/maxtour-analytics-proxy
         run: npx --yes wrangler@latest deploy --config wrangler.jsonc
 
-      - name: Attach production custom domain to analytics proxy
+      - name: Verify proxy before switching domain
         shell: bash
         run: |
           set -euo pipefail
-          response=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains"             -X PUT             -H 'Content-Type: application/json'             -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}"             --data "{\"hostname\":\"${TARGET_DOMAIN}\",\"service\":\"${PROXY_WORKER}\",\"zone_id\":\"${CF_ZONE_ID}\",\"zone_name\":\"viiversion.com\"}")
-          test "$(echo "$response" | jq -r '.success')" = "true"
+          proxy="https://${PROXY_WORKER}.viiversion.workers.dev"
+          curl -L -fsS "$proxy/?prebind=${GITHUB_SHA}" -o /tmp/proxy-home.html
+          grep -Fq 'dashboard.viiversion.com/tracker.js' /tmp/proxy-home.html
+          grep -Fq 'telegram.org/js/telegram-web-app.js?63' /tmp/proxy-home.html
+          curl -L -fsS "$proxy/api/health?prebind=${GITHUB_SHA}" -o /tmp/proxy-health.json
+          jq -e '.ok == true and .project == "maxtourvietnam"' /tmp/proxy-health.json >/dev/null
+
+      - name: Switch production custom domain with rollback
+        shell: bash
+        run: |
+          set -euo pipefail
+          api="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains"
+          auth=(-H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" -H 'Content-Type: application/json')
+          list=$(curl -fsS "$api" "${auth[@]}")
+          domain_id=$(echo "$list" | jq -r --arg h "$TARGET_DOMAIN" '.result[] | select(.hostname == $h) | .id' | head -n1)
+          old_service=$(echo "$list" | jq -r --arg h "$TARGET_DOMAIN" '.result[] | select(.hostname == $h) | .service' | head -n1)
+          test -n "$domain_id" && test "$domain_id" != "null"
+          test -n "$old_service" && test "$old_service" != "null"
+
+          curl -fsS -X DELETE "$api/$domain_id" "${auth[@]}" >/tmp/delete-domain.json
+          sleep 2
+
+          set +e
+          response=$(curl -sS "$api" -X PUT "${auth[@]}" --data "{\"hostname\":\"${TARGET_DOMAIN}\",\"service\":\"${PROXY_WORKER}\",\"zone_id\":\"${CF_ZONE_ID}\",\"zone_name\":\"viiversion.com\"}")
+          success=$(echo "$response" | jq -r '.success // false')
+          set -e
+
+          if [ "$success" != "true" ]; then
+            echo "::error::Proxy domain bind failed; restoring $old_service"
+            echo "$response"
+            restore=$(curl -sS "$api" -X PUT "${auth[@]}" --data "{\"hostname\":\"${TARGET_DOMAIN}\",\"service\":\"${old_service}\",\"zone_id\":\"${CF_ZONE_ID}\",\"zone_name\":\"viiversion.com\"}")
+            test "$(echo "$restore" | jq -r '.success')" = "true"
+            exit 1
+          fi
           test "$(echo "$response" | jq -r '.result.service')" = "$PROXY_WORKER"
 
       - name: Verify production content and API are unchanged plus analytics
