@@ -17,6 +17,7 @@ jobs:
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CF_ZONE_ID: 56fa9423ef85e05559f453af43ec400f
       TARGET_DOMAIN: maxtourvietnam.viiversion.com
       WORKER_NAME: maxtourvietnam
       DB_NAME: maxtourvietnam
@@ -34,77 +35,20 @@ jobs:
         with:
           node-version: 22
 
-      - name: Install deployment dependencies
-        working-directory: maxtourvietnam
-        run: npm install --no-audit --no-fund
-
-      - name: Mirror current production static bundle
+      - name: Install and build committed production source
         working-directory: maxtourvietnam
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf dist
-          node --input-type=module <<'NODE'
-          import { mkdir, writeFile } from 'node:fs/promises';
-          import { dirname } from 'node:path';
-
-          const base = 'https://maxtourvietnam.viiversion.com';
-          const queue = ['/', '/tour-main/manifest.json'];
-          const seen = new Set();
-
-          const enqueue = (path) => {
-            if (!path || !path.startsWith('/')) return;
-            if (!/^\/(?:assets|mirror-media|tour-galleries|tour-main)\//.test(path)) return;
-            const clean = path.replace(/[?#].*$/, '');
-            if (!seen.has(clean)) queue.push(clean);
-          };
-
-          while (queue.length) {
-            const path = queue.shift();
-            const clean = path.replace(/[?#].*$/, '');
-            if (seen.has(clean)) continue;
-            seen.add(clean);
-            const response = await fetch(`${base}${path}?analytics_hotfix=20260923`, { redirect: 'follow' });
-            if (!response.ok) throw new Error(`Mirror fetch failed ${response.status}: ${path}`);
-            const bytes = Buffer.from(await response.arrayBuffer());
-            const out = clean === '/' ? 'dist/index.html' : `dist${clean}`;
-            await mkdir(dirname(out), { recursive: true });
-            await writeFile(out, bytes);
-            const type = response.headers.get('content-type') || '';
-            const textual = /text|javascript|json|svg|xml/.test(type) || /\.(?:html|js|css|json|svg)$/.test(clean);
-            if (textual) {
-              const text = bytes.toString('utf8');
-              for (const match of text.matchAll(/\/(?:assets|mirror-media|tour-galleries|tour-main)\/[^"'()<>s\\]+/g)) enqueue(match[0]);
-              if (clean === '/tour-main/manifest.json') {
-                const manifest = JSON.parse(text);
-                for (const slug of Object.keys(manifest)) enqueue(`/tour-main/${slug}.html`);
-              }
-            }
-          }
-          console.log(`Mirrored ${seen.size} production resources.`);
-          NODE
-          test -s dist/index.html
-
-      - name: Inject Telegram analytics only
-        working-directory: maxtourvietnam
-        shell: bash
-        run: |
-          set -euo pipefail
-          node --input-type=module <<'NODE'
-          import { readFile, writeFile } from 'node:fs/promises';
-          const path = 'dist/index.html';
-          let html = await readFile(path, 'utf8');
-          if (!html.includes('telegram.org/js/telegram-web-app.js')) {
-            html = html.replace('</head>', '<script src="https://telegram.org/js/telegram-web-app.js?63"></script></head>');
-          }
-          if (!html.includes('dashboard.viiversion.com/tracker.js')) {
-            html = html.replace('</body>', '<script defer src="https://dashboard.viiversion.com/tracker.js" data-project="MAX TOUR Vietnam"></script></body>');
-          }
-          await writeFile(path, html, 'utf8');
-          NODE
-          grep -Fq 'telegram.org/js/telegram-web-app.js?63' dist/index.html
+          npm install --no-audit --no-fund
+          npm run build
           grep -Fq 'dashboard.viiversion.com/tracker.js' dist/index.html
-          grep -Fq 'data-project="MAX TOUR Vietnam"' dist/index.html
+          grep -Fq 'telegram.org/js/telegram-web-app.js?63' dist/index.html
+          test "$(find dist/tour-main -maxdepth 1 -type f -name '*.html' | wc -l)" -eq 28
+          test -d dist/mirror-media
+          test -d dist/tour-galleries
+          grep -R -q '/mirror-media/' dist/tour-main
+          echo 'Committed production source bundle contains Telegram analytics and all 28 tour pages.'
 
       - name: Prepare existing D1 binding
         working-directory: maxtourvietnam
@@ -115,9 +59,16 @@ jobs:
           test -n "$DB_ID" && test "$DB_ID" != "null"
           jq --arg id "$DB_ID" --arg worker "$WORKER_NAME" '.name = $worker | .d1_databases[0].database_id = $id' wrangler.jsonc > wrangler.analytics-hotfix.jsonc
 
-      - name: Deploy unchanged production bundle with analytics
+      - name: Deploy code and assets without D1 reseed
         working-directory: maxtourvietnam
         run: npx wrangler deploy --config wrangler.analytics-hotfix.jsonc
+
+      - name: Reattach production custom domain
+        shell: bash
+        run: |
+          set -euo pipefail
+          response=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains"             -X PUT             -H 'Content-Type: application/json'             -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}"             --data "{\"hostname\":\"${TARGET_DOMAIN}\",\"service\":\"${WORKER_NAME}\",\"zone_id\":\"${CF_ZONE_ID}\",\"zone_name\":\"viiversion.com\"}")
+          test "$(echo "$response" | jq -r '.success')" = "true"
 
       - name: Verify production analytics and API
         shell: bash
@@ -138,4 +89,4 @@ jobs:
           jq -e '.ok == true and .project == "maxtourvietnam"' /tmp/health.json >/dev/null
           curl -L -fsS "$base/api/tours?analytics_hotfix=${GITHUB_SHA}" -o /tmp/tours.json
           jq -e '.tours | length == 28' /tmp/tours.json >/dev/null
-          echo 'MAX TOUR Vietnam Telegram analytics hotfix is live.'
+          echo 'MAX TOUR Vietnam Telegram analytics hotfix is live; D1 was not reseeded.'
