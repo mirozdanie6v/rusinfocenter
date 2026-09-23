@@ -13,34 +13,46 @@ permissions:
 jobs:
   audit:
     runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
-      - name: Audit live VIIVERSION domains
+      - name: Audit every live VIIVERSION custom domain
         shell: bash
         run: |
-          set -u
-          domains=(
-            auto-sale.viiversion.com
-            dashboard.viiversion.com
-            max-tour-demo-admin.viiversion.com
-            max-tour-demo.viiversion.com
-            max-tour.viiversion.com
-            maxtourvietnam.viiversion.com
-            pet-nika.viiversion.com
-            rusinfocenter.viiversion.com
-            tour-operator-demo.viiversion.com
-            truesurf-app.viiversion.com
-            truesurf.viiversion.com
-            uniq-smart-rent-demo.viiversion.com
-            uniq-smart-rent.viiversion.com
-            viiversion.com
-            www.viiversion.com
-          )
-          printf 'DOMAIN\tHTTP\tTRACKER\tTELEGRAM_SDK\n'
+          set -euo pipefail
+          response=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains"             -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}")
+          test "$(echo "$response" | jq -r '.success')" = "true"
+
+          mapfile -t domains < <(echo "$response" | jq -r '.result[] | select(.zone_name == "viiversion.com") | .hostname' | sort)
+          test "${#domains[@]}" -gt 0
+
+          failures=0
+          printf 'DOMAIN\tHTTP\tTRACKER\tTELEGRAM_SDK\tSTATUS\n'
           for domain in "${domains[@]}"; do
-            code=$(curl -L -sS --connect-timeout 6 --max-time 25 -o /tmp/page.html -w '%{http_code}' "https://$domain/?tracking-audit=${GITHUB_SHA}" || true)
+            if [ "$domain" = "dashboard.viiversion.com" ]; then
+              printf '%s\t-\t-\t-\tSKIP_ANALYTICS_INFRA\n' "$domain"
+              continue
+            fi
+
+            page=/tmp/page-${domain//./_}.html
+            code=$(curl -L -sS --connect-timeout 6 --max-time 25 -o "$page" -w '%{http_code}' "https://$domain/?tracking-audit=${GITHUB_SHA}" || true)
             tracker=no
             telegram=no
-            grep -Fq 'dashboard.viiversion.com/tracker.js' /tmp/page.html && tracker=yes
-            grep -Fq 'telegram.org/js/telegram-web-app.js' /tmp/page.html && telegram=yes
-            printf '%s\t%s\t%s\t%s\n' "$domain" "$code" "$tracker" "$telegram"
+            grep -Fq 'dashboard.viiversion.com/tracker.js' "$page" && tracker=yes
+            grep -Fq 'telegram.org/js/telegram-web-app.js' "$page" && telegram=yes
+
+            status=OK
+            if [ "$code" != "200" ] || [ "$tracker" != "yes" ] || [ "$telegram" != "yes" ]; then
+              status=FAIL
+              failures=$((failures + 1))
+            fi
+            printf '%s\t%s\t%s\t%s\t%s\n' "$domain" "$code" "$tracker" "$telegram" "$status"
           done
+
+          if [ "$failures" -ne 0 ]; then
+            echo "::error::Telegram analytics coverage failed for $failures live domain(s)."
+            exit 1
+          fi
+
+          echo "All live VIIVERSION user-facing domains contain Telegram SDK + central tracker."
