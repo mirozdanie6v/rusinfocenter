@@ -1,0 +1,46 @@
+name: Audit Telegram tracking coverage
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.audit-telegram-tracking'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Audit live VIIVERSION domains
+        shell: bash
+        run: |
+          set -u
+          domains=(
+            auto-sale.viiversion.com
+            dashboard.viiversion.com
+            max-tour-demo-admin.viiversion.com
+            max-tour-demo.viiversion.com
+            max-tour.viiversion.com
+            maxtourvietnam.viiversion.com
+            pet-nika.viiversion.com
+            rusinfocenter.viiversion.com
+            tour-operator-demo.viiversion.com
+            truesurf-app.viiversion.com
+            truesurf.viiversion.com
+            uniq-smart-rent-demo.viiversion.com
+            uniq-smart-rent.viiversion.com
+            viiversion.com
+            www.viiversion.com
+          )
+          printf 'DOMAIN\tHTTP\tTRACKER\tTELEGRAM_SDK\n'
+          for domain in "${domains[@]}"; do
+            code=$(curl -L -sS --connect-timeout 6 --max-time 25 -o /tmp/page.html -w '%{http_code}' "https://$domain/?tracking-audit=${GITHUB_SHA}" || true)
+            tracker=no
+            telegram=no
+            grep -Fq 'dashboard.viiversion.com/tracker.js' /tmp/page.html && tracker=yes
+            grep -Fq 'telegram.org/js/telegram-web-app.js' /tmp/page.html && telegram=yes
+            printf '%s\t%s\t%s\t%s\n' "$domain" "$code" "$tracker" "$telegram"
+          done
