@@ -139,8 +139,9 @@ function resetBookingFlow(){step=0;maxStep=0;state.zone='roof';state.table='T1';
 function addBooking(){if(state._booked)return;state._booked=true;state.bookings.unshift({id:Date.now(),zone:state.zone,zoneName:z().name,img:z().img,table:state.table,paid:true,status:'manager_confirmation',payMethod:state.payMethod,name:state.name,phone:state.phone,guests:state.guests||2});setTimeout(()=>state._booked=false,500);}
 function renderBookings(){
   let list=$('#bookingList'); if(!list)return;
-  list.innerHTML=state.bookings.length?state.bookings.map(b=>`<div class="bookingCard"><img src="${b.img}"><div><h3>${b.zoneName} · ${b.table}</h3><p>${b.name} · ${b.phone} · ${b.guests} guests</p><span class="tag">${b.payMethod} · ${t('awaitingManager')}</span></div><div class="actions"><button class="btn bad" onclick="cancelBooking(${b.id})">${t('cancel')}</button><button class="btn secondary" onclick="state.zone='${b.zone}';step=1;maxStep=Math.max(maxStep,1);renderBook();go('book')">${t('navBook')}</button></div></div>`).join(''):`<div class="card"><p>${t('empty')}</p></div>`;
+  list.innerHTML=(state.bookings.length?state.bookings.map(b=>`<div class="bookingCard"><img src="${b.img}"><div><h3>${b.zoneName} · ${b.table}</h3><p>${b.name} · ${b.phone} · ${b.guests} guests</p><span class="tag">${b.payMethod} · ${t('awaitingManager')}</span></div><div class="actions"><button class="btn bad" onclick="cancelBooking(${b.id})">${t('cancel')}</button></div></div>`).join(''):`<div class="card"><p>${t('empty')}</p></div>`)+`<button class="btn full" style="margin-top:4px" onclick="startNewBooking()">${t('bookNow')}</button>`;
 }
+function startNewBooking(){resetBookingFlow();state._booked=false;go('book');}
 function cancelBooking(id){state.bookings=state.bookings.filter(b=>b.id!==id);renderBookings();renderAdmin();}
 function renderAdmin(){
   $('#mReq').textContent=state.bookings.length; $('#mPaid').textContent=state.bookings.filter(b=>b.paid).length;
