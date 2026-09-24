@@ -171,87 +171,80 @@
 }
 #positions>.card p,#mine>.card p{color:#99938e}
 
-/* POSITION SPARK TRACE — fast elegant edge-light, navigation untouched */
+/* POSITION SAFE TRACE — CSS only, does not touch navigation logic */
 .positionHeaderCard{
   position:relative;
   overflow:hidden;
   isolation:isolate;
 }
 #positions.on>.positionHeaderCard{
-  border-color:rgba(242,189,103,.16);
+  border-color:rgba(242,189,103,.18);
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,.035),
     0 18px 40px rgba(0,0,0,.12),
-    0 0 0 1px rgba(242,189,103,.025);
+    0 0 0 1px rgba(242,189,103,.03);
 }
-.positionSpark{
+.positionTraceEdge{
   position:absolute;
-  z-index:7;
+  z-index:5;
   display:block;
   pointer-events:none;
   opacity:0;
-  border-radius:999px;
-  filter:
-    drop-shadow(0 0 3px rgba(255,220,157,.72))
-    drop-shadow(0 0 7px rgba(123,220,245,.20));
-}
-.positionSparkTop,.positionSparkBottom{
-  width:24%;
-  height:1.5px;
   background:linear-gradient(90deg,
-    rgba(242,189,103,0) 0%,
-    rgba(255,224,169,.42) 24%,
-    rgba(255,226,178,1) 58%,
-    rgba(123,220,245,.78) 78%,
-    rgba(123,220,245,0) 100%);
+    rgba(242,189,103,0),
+    rgba(255,218,152,.98) 38%,
+    rgba(123,220,245,.88) 72%,
+    rgba(123,220,245,0)
+  );
+  filter:drop-shadow(0 0 4px rgba(242,189,103,.62)) drop-shadow(0 0 8px rgba(123,220,245,.18));
 }
-.positionSparkRight,.positionSparkLeft{
-  width:1.5px;
-  height:34%;
+.positionTraceTop,.positionTraceBottom{
+  width:34%;
+  height:2px;
+}
+.positionTraceRight,.positionTraceLeft{
+  width:2px;
+  height:42%;
   background:linear-gradient(180deg,
-    rgba(242,189,103,0) 0%,
-    rgba(255,224,169,.42) 24%,
-    rgba(255,226,178,1) 58%,
-    rgba(123,220,245,.78) 78%,
-    rgba(123,220,245,0) 100%);
+    rgba(242,189,103,0),
+    rgba(255,218,152,.98) 38%,
+    rgba(123,220,245,.88) 72%,
+    rgba(123,220,245,0)
+  );
 }
-.positionSparkTop{left:0;top:0;transform:translateX(-120%)}
-.positionSparkRight{right:0;top:0;transform:translateY(-120%)}
-.positionSparkBottom{right:0;bottom:0;transform:translateX(120%)}
-.positionSparkLeft{left:0;bottom:0;transform:translateY(120%)}
+.positionTraceTop{top:0;left:0;transform:translateX(-125%)}
+.positionTraceRight{top:0;right:0;transform:translateY(-125%)}
+.positionTraceBottom{right:0;bottom:0;transform:translateX(125%)}
+.positionTraceLeft{bottom:0;left:0;transform:translateY(125%)}
 
-#positions.on .positionSparkTop{animation:positionSparkTop .23s cubic-bezier(.12,.72,.18,1) .04s both}
-#positions.on .positionSparkRight{animation:positionSparkRight .16s cubic-bezier(.12,.72,.18,1) .22s both}
-#positions.on .positionSparkBottom{animation:positionSparkBottom .23s cubic-bezier(.12,.72,.18,1) .35s both}
-#positions.on .positionSparkLeft{animation:positionSparkLeft .16s cubic-bezier(.12,.72,.18,1) .53s both}
+#positions.on .positionTraceTop{animation:traceTop .38s cubic-bezier(.2,.75,.2,1) .06s both}
+#positions.on .positionTraceRight{animation:traceRight .34s cubic-bezier(.2,.75,.2,1) .36s both}
+#positions.on .positionTraceBottom{animation:traceBottom .38s cubic-bezier(.2,.75,.2,1) .64s both}
+#positions.on .positionTraceLeft{animation:traceLeft .34s cubic-bezier(.2,.75,.2,1) .96s both}
 
-@keyframes positionSparkTop{
-  0%{transform:translateX(-120%) scaleX(.72);opacity:0}
-  18%{opacity:.42}
-  48%{opacity:1}
-  82%{opacity:.84}
-  100%{transform:translateX(420%) scaleX(.88);opacity:0}
+@keyframes traceTop{
+  0%{transform:translateX(-125%);opacity:0}
+  15%{opacity:1}
+  85%{opacity:1}
+  100%{transform:translateX(295%);opacity:0}
 }
-@keyframes positionSparkRight{
-  0%{transform:translateY(-120%) scaleY(.72);opacity:0}
-  18%{opacity:.42}
-  50%{opacity:1}
-  82%{opacity:.82}
-  100%{transform:translateY(355%) scaleY(.88);opacity:0}
+@keyframes traceRight{
+  0%{transform:translateY(-125%);opacity:0}
+  15%{opacity:1}
+  85%{opacity:1}
+  100%{transform:translateY(270%);opacity:0}
 }
-@keyframes positionSparkBottom{
-  0%{transform:translateX(120%) scaleX(.72);opacity:0}
-  18%{opacity:.42}
-  48%{opacity:1}
-  82%{opacity:.84}
-  100%{transform:translateX(-420%) scaleX(.88);opacity:0}
+@keyframes traceBottom{
+  0%{transform:translateX(125%);opacity:0}
+  15%{opacity:1}
+  85%{opacity:1}
+  100%{transform:translateX(-295%);opacity:0}
 }
-@keyframes positionSparkLeft{
-  0%{transform:translateY(120%) scaleY(.72);opacity:0}
-  18%{opacity:.42}
-  50%{opacity:1}
-  82%{opacity:.82}
-  100%{transform:translateY(-355%) scaleY(.88);opacity:0}
+@keyframes traceLeft{
+  0%{transform:translateY(125%);opacity:0}
+  15%{opacity:1}
+  85%{opacity:1}
+  100%{transform:translateY(-270%);opacity:0}
 }
 
 .hero{
@@ -275,43 +268,18 @@
     radial-gradient(320px 200px at 78% 28%,rgba(123,220,245,.055),transparent 70%),
     radial-gradient(260px 180px at 22% 78%,rgba(242,189,103,.085),transparent 72%);
 }
-.hero:after{content:none}
-.heroScrollSpark{
+.hero:after{
+  content:"";
   position:absolute;
-  left:0;
+  left:20px;
+  width:112px;
   bottom:16px;
-  width:86px;
-  height:1.5px;
-  z-index:2;
+  height:1px;
+  z-index:1;
   pointer-events:none;
-  opacity:0;
-  border-radius:999px;
-  background:linear-gradient(90deg,
-    rgba(242,189,103,0),
-    rgba(255,224,169,.34) 18%,
-    rgba(255,221,158,.96) 48%,
-    rgba(123,220,245,.68) 74%,
-    rgba(123,220,245,0)
-  );
-  box-shadow:0 0 5px rgba(242,189,103,.32),0 0 11px rgba(123,220,245,.10);
+  background:linear-gradient(90deg,rgba(242,189,103,0),rgba(242,189,103,.92),rgba(123,220,245,.40),rgba(123,220,245,0));
+  box-shadow:0 0 12px rgba(242,189,103,.18);
 }
-.heroScrollSpark.scroll-down{animation:heroScrollDown .58s cubic-bezier(.16,.72,.2,1) both}
-.heroScrollSpark.scroll-up{animation:heroScrollUp .58s cubic-bezier(.16,.72,.2,1) both}
-@keyframes heroScrollDown{
-  0%{transform:translateX(-105px) scaleX(.74);opacity:0}
-  18%{opacity:.38}
-  45%{opacity:.92;transform:translateX(42vw) scaleX(1)}
-  82%{opacity:.72}
-  100%{transform:translateX(calc(100vw - 18px)) scaleX(.82);opacity:0}
-}
-@keyframes heroScrollUp{
-  0%{transform:translateX(calc(100vw - 18px)) scaleX(.74);opacity:0}
-  18%{opacity:.38}
-  45%{opacity:.92;transform:translateX(42vw) scaleX(1)}
-  82%{opacity:.72}
-  100%{transform:translateX(-105px) scaleX(.82);opacity:0}
-}
-
 .hero>*{position:relative;z-index:2}
 .hero h1{
   max-width:82%;
@@ -750,49 +718,6 @@ input:focus,textarea:focus,select:focus{
   background:rgba(242,189,103,.09);
   box-shadow:inset 0 0 0 1px rgba(242,189,103,.12);
 }
-.nav button[data-go="ai"].aiSparkRun .navIcon,
-.aiMark.aiSparkRun{
-  transform-origin:center;
-  animation:aiElegantSpark 1s cubic-bezier(.16,.72,.2,1) both;
-}
-.aiMark.aiSparkRun{
-  box-shadow:
-    0 16px 34px rgba(0,0,0,.22),
-    inset 0 1px 0 rgba(255,255,255,.035);
-}
-@keyframes aiElegantSpark{
-  0%{
-    transform:scale(1) rotate(0deg);
-    color:#f1c879;
-    filter:drop-shadow(0 0 0 rgba(255,221,158,0));
-  }
-  18%{
-    transform:scale(1.08) rotate(-2deg);
-    color:#ffe4ad;
-    filter:drop-shadow(0 0 4px rgba(255,221,158,.58));
-  }
-  34%{
-    transform:scale(1.01) rotate(1deg);
-    color:#a7e7f7;
-    filter:drop-shadow(0 0 8px rgba(123,220,245,.48));
-  }
-  52%{
-    transform:scale(1.13) rotate(-1deg);
-    color:#fff0c9;
-    filter:drop-shadow(0 0 8px rgba(255,221,158,.78));
-  }
-  70%{
-    transform:scale(1.04) rotate(1deg);
-    color:#bcecf7;
-    filter:drop-shadow(0 0 5px rgba(123,220,245,.32));
-  }
-  100%{
-    transform:scale(1) rotate(0deg);
-    color:inherit;
-    filter:none;
-  }
-}
-
 .nav button:active{transform:scale(.965)}
 @keyframes premiumScreenIn{
   from{opacity:.72;transform:translateY(5px)}
@@ -812,8 +737,8 @@ input:focus,textarea:focus,select:focus{
   .aiZoneCard img{height:120px}
 }
 @media(prefers-reduced-motion:reduce){
-  .screen.on,.zone,.positionSpark,.heroScrollSpark,.nav button[data-go="ai"].aiSparkRun .navIcon,.aiMark.aiSparkRun{animation:none!important}
-  .positionSpark,.heroScrollSpark{display:none!important}
+  .screen.on,.zone,.positionTraceEdge{animation:none!important}
+  .positionTraceEdge{display:none!important}
   .btn,.zoneChoice,.zoneImg img,.nav button{transition:none!important}
 }
 
@@ -839,7 +764,7 @@ input:focus,textarea:focus,select:focus{
 <header class="top"><div class="brand"><div class="logo">☁</div><div><b>The Cloud</b><span data-i="sub">Bar Nha Trang</span></div></div><div class="topActions"><button class="adminBtn" data-go="admin" data-i="admin">Админ</button><div class="lang"><button data-lang="ru" class="on">RU</button><button data-lang="en">EN</button><button data-lang="vi">VI</button></div></div></header>
 <main class="stage">
 <section id="home" class="screen on">
- <div class="hero"><span class="heroScrollSpark" id="heroScrollSpark" aria-hidden="true"></span><h1>The Cloud<br>Nha Trang</h1><p data-i="heroText">Вечерний rooftop-бар с кальяном, коктейлями, видом на город и зонами для разного настроения.</p><div class="row" style="margin-top:18px"><button class="btn" data-go="book" data-i="bookNow">Забронировать</button><button class="btn secondary" data-go="ai" data-i="askAi">Спросить AI</button></div></div>
+ <div class="hero"><h1>The Cloud<br>Nha Trang</h1><p data-i="heroText">Вечерний rooftop-бар с кальяном, коктейлями, видом на город и зонами для разного настроения.</p><div class="row" style="margin-top:18px"><button class="btn" data-go="book" data-i="bookNow">Забронировать</button><button class="btn secondary" data-go="ai" data-i="askAi">Спросить AI</button></div></div>
  <div class="homeUtility">
   <div class="contacts">
     <a class="contact" href="https://wa.me/84825190251" target="_blank" rel="noopener"><span class="contactIcon"><svg><use href="#i-message"/></svg></span><span class="contactText" data-i="manager">Связаться с менеджером</span><svg class="contactChevron"><use href="#i-chevron"/></svg></a>
@@ -858,10 +783,10 @@ input:focus,textarea:focus,select:focus{
  </div>
 </section>
 <section id="positions" class="screen"><div class="card positionHeaderCard">
-  <span class="positionSpark positionSparkTop" aria-hidden="true"></span>
-  <span class="positionSpark positionSparkRight" aria-hidden="true"></span>
-  <span class="positionSpark positionSparkBottom" aria-hidden="true"></span>
-  <span class="positionSpark positionSparkLeft" aria-hidden="true"></span>
+  <span class="positionTraceEdge positionTraceTop" aria-hidden="true"></span>
+  <span class="positionTraceEdge positionTraceRight" aria-hidden="true"></span>
+  <span class="positionTraceEdge positionTraceBottom" aria-hidden="true"></span>
+  <span class="positionTraceEdge positionTraceLeft" aria-hidden="true"></span>
   <h2 data-i="zonesTitle">Позиции</h2><p data-i="zonesText">Выберите атмосферу вечера.</p>
 </div><div class="zoneGrid" id="zoneGrid"></div></section>
 <section id="book" class="screen"><div class="card"><h2 data-i="bookTitle">Забронировать</h2><div class="tabs" id="stepTabs"></div><div id="stepArea"></div></div></section>
@@ -1002,48 +927,7 @@ function go(id){
   $$('[data-go]').forEach(b=>b.classList.toggle('on',b.dataset.go===id&&b.closest('.nav')));
 }
 $$('[data-go]').forEach(b=>b.onclick=()=>go(b.dataset.go));
-$('[data-lang]').forEach(b=>b.onclick=()=>{lang=b.dataset.lang;i18n();});
-
-/* Motion hooks: visual-only, navigation logic remains untouched */
-const homeScreen=$('#home');
-const heroSpark=$('#heroScrollSpark');
-let heroLastScroll=homeScreen?homeScreen.scrollTop:0;
-let heroLastPulse=0;
-function pulseHeroSpark(direction){
-  if(!heroSpark)return;
-  const cls=direction<0?'scroll-up':'scroll-down';
-  heroSpark.classList.remove('scroll-up','scroll-down');
-  void heroSpark.offsetWidth;
-  heroSpark.classList.add(cls);
-}
-if(homeScreen){
-  homeScreen.addEventListener('scroll',()=>{
-    const now=performance.now();
-    const current=homeScreen.scrollTop;
-    const delta=current-heroLastScroll;
-    heroLastScroll=current;
-    if(Math.abs(delta)<2||now-heroLastPulse<150)return;
-    heroLastPulse=now;
-    pulseHeroSpark(delta);
-  },{passive:true});
-}
-
-function runAiSpark(){
-  const navAi=document.querySelector('.nav button[data-go="ai"]');
-  const mark=document.querySelector('#ai .aiMark');
-  [navAi,mark].forEach(el=>{
-    if(!el)return;
-    el.classList.remove('aiSparkRun');
-    void el.offsetWidth;
-    el.classList.add('aiSparkRun');
-  });
-}
-const aiScreenEl=$('#ai');
-if(aiScreenEl){
-  new MutationObserver(()=>{
-    if(aiScreenEl.classList.contains('on')) runAiSpark();
-  }).observe(aiScreenEl,{attributes:true,attributeFilter:['class']});
-}
+$$('[data-lang]').forEach(b=>b.onclick=()=>{lang=b.dataset.lang;i18n();});
 
 function i18n(){
   document.documentElement.lang=lang;
