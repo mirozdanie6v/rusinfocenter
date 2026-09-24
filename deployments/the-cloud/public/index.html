@@ -16,6 +16,12 @@
 .consent{display:flex;gap:10px;align-items:flex-start;margin:12px 14px;color:var(--muted);font-size:13px;line-height:1.4}
 .consent input{width:20px;min-height:20px;accent-color:#f4bf5f;margin-top:2px}
 .channelPill{display:inline-flex;align-items:center;gap:6px;border:1px solid rgba(121,228,170,.25);background:rgba(121,228,170,.10);color:#c2f3d7;border-radius:999px;padding:6px 9px;font-size:12px;font-weight:900}
+.payShell{overflow:hidden}
+.payTop{display:grid;grid-template-columns:82px minmax(0,1fr);gap:12px;align-items:center;padding:12px 14px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.025)}
+.payTop img{width:82px;height:72px;max-width:82px;object-fit:cover;display:block;border-radius:16px}
+.payTop>div{min-width:0}.payTop h3{font-size:15px;line-height:1.2;margin:0 0 5px}.payTop p{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:7px}
+.payNote{margin:0 14px 12px;color:var(--muted);font-size:12px;line-height:1.4}
+.qrBox,.receipt{margin:0 14px 12px;padding:12px;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.035);text-align:center}
 
 @media(max-width:360px){.hero h1{font-size:34px;max-width:82%}.hero p{max-width:88%}.grid2,.adminGrid{grid-template-columns:1fr}.contacts{grid-template-columns:1fr 1fr}.zoneChoice img,.bookingCard img{width:78px;height:78px}.bookingCard{grid-template-columns:78px 1fr}}
 </style>
@@ -127,7 +133,7 @@ function paymentNext(){
   if(state.payStage==='qr'){
     state.payStage='receipt';addBooking();renderBook();renderBookings();renderAdmin();return;
   }
-  if(state.payStage==='receipt'){resetBookingFlow();go('me');}
+  if(state.payStage==='receipt'){resetBookingFlow();renderBookings();renderAdmin();go('mine');}
 }
 function resetBookingFlow(){step=0;maxStep=0;state.zone='roof';state.table='T1';state.name='';state.phone='+84 825 190 251';state.note='';state.payMethod='';state.payStage='choose';state.consent=false;state.err='';renderBook();}
 function addBooking(){if(state._booked)return;state._booked=true;state.bookings.unshift({id:Date.now(),zone:state.zone,zoneName:z().name,img:z().img,table:state.table,paid:true,status:'manager_confirmation',payMethod:state.payMethod,name:state.name,phone:state.phone,guests:state.guests||2});setTimeout(()=>state._booked=false,500);}
