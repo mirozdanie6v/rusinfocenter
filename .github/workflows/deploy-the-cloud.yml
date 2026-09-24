@@ -1,0 +1,71 @@
+name: Deploy THE CLOUD to Cloudflare
+
+on:
+  push:
+    branches:
+      - the-cloud
+    paths:
+      - 'deployments/the-cloud/**'
+      - '.deploy-the-cloud'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: the-cloud-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      VIIVERSION_ZONE_ID: 56fa9423ef85e05559f453af43ec400f
+
+    steps:
+      - name: Checkout THE CLOUD branch
+        uses: actions/checkout@v5
+        with:
+          ref: the-cloud
+
+      - name: Require Cloudflare credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}" || { echo 'CLOUDFLARE_API_TOKEN is missing'; exit 1; }
+          test -n "${CLOUDFLARE_ACCOUNT_ID:-}" || { echo 'CLOUDFLARE_ACCOUNT_ID is missing'; exit 1; }
+
+      - name: Deploy static assets
+        working-directory: deployments/the-cloud
+        run: npx --yes wrangler@latest deploy
+
+      - name: Attach custom domain
+        shell: bash
+        run: |
+          set -euo pipefail
+          response=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains"             -X PUT             -H 'Content-Type: application/json'             -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}"             --data "{\"hostname\":\"thecloud.viiversion.com\",\"service\":\"the-cloud\",\"zone_id\":\"${VIIVERSION_ZONE_ID}\",\"zone_name\":\"viiversion.com\"}")
+          echo "$response" | jq .
+          test "$(echo "$response" | jq -r '.success')" = "true"
+          test "$(echo "$response" | jq -r '.result.hostname')" = "thecloud.viiversion.com"
+          test "$(echo "$response" | jq -r '.result.service')" = "the-cloud"
+
+      - name: Verify production
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='https://thecloud.viiversion.com'
+          ok=0
+          for attempt in $(seq 1 24); do
+            home_code=$(curl -L -sS --connect-timeout 5 --max-time 20 -o /tmp/thecloud-home.html -w '%{http_code}' "$base/?deploy=${GITHUB_SHA}" || true)
+            asset_code=$(curl -L -sS --connect-timeout 5 --max-time 20 -o /tmp/thecloud-scene.webp -w '%{http_code}' "$base/assets/scene-1.webp?deploy=${GITHUB_SHA}" || true)
+            if [ "$home_code" = "200" ] && [ "$asset_code" = "200" ]               && grep -Fq '<title>The Cloud Mini App v13</title>' /tmp/thecloud-home.html; then
+              echo "Verified live $base"
+              ok=1
+              break
+            fi
+            sleep 5
+          done
+          test "$ok" -eq 1
