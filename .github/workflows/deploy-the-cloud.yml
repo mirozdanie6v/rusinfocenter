@@ -75,9 +75,13 @@ jobs:
             ai_code=$(curl -sS --connect-timeout 5 --max-time 45 -o /tmp/thecloud-ai.json -w '%{http_code}' \
               -X POST "$base/api/ai" \
               -H 'Content-Type: application/json' \
-              --data '{"question":"What time are you open?","lang":"en","history":[]}' || true)
-            if [ "$ai_code" = "200" ] && jq -e '.reply | type == "string" and length > 5' /tmp/thecloud-ai.json >/dev/null 2>&1; then
-              echo "Verified live AI endpoint"
+              --data '{"question":"How can I book a table?","lang":"en","history":[]}' || true)
+            ai_reply=$(jq -r '.reply // ""' /tmp/thecloud-ai.json 2>/dev/null || true)
+            if [ "$ai_code" = "200" ] \
+              && [ "${#ai_reply}" -gt 5 ] \
+              && echo "$ai_reply" | grep -Eqi 'app|reserve|booking' \
+              && ! echo "$ai_reply" | grep -Eqi 'only way.*manager|manager.*only way'; then
+              echo "Verified live AI booking flow"
               ai_ok=1
               break
             fi
