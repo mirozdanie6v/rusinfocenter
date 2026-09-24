@@ -171,71 +171,55 @@
 }
 #positions>.card p,#mine>.card p{color:#99938e}
 
-/* POSITION ENTRY TRACE — one premium contour pass on screen entry */
-@property --position-trace-angle{
-  syntax:"<angle>";
-  inherits:false;
-  initial-value:0deg;
-}
+/* POSITION ENTRY TRACE — explicit SVG stroke animation for mobile reliability */
 #positions>.card{
   position:relative;
   isolation:isolate;
   overflow:hidden;
-  transition:border-color .35s ease,box-shadow .45s ease,background .35s ease;
+  transition:border-color .3s ease,box-shadow .35s ease,background .3s ease;
 }
 #positions.on>.card{
-  border-color:rgba(242,189,103,.18);
+  border-color:rgba(242,189,103,.16);
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,.035),
     0 18px 40px rgba(0,0,0,.12),
-    0 0 0 1px rgba(242,189,103,.035);
+    0 0 0 1px rgba(242,189,103,.03);
 }
-#positions.on>.card:before{
-  content:"";
-  position:absolute;
-  inset:-1px;
-  border-radius:inherit;
-  padding:1px;
-  pointer-events:none;
-  z-index:3;
-  --position-trace-angle:0deg;
-  background:conic-gradient(
-    from var(--position-trace-angle),
-    transparent 0deg 278deg,
-    rgba(242,189,103,.12) 292deg,
-    rgba(255,218,152,.96) 316deg,
-    rgba(123,220,245,.62) 340deg,
-    transparent 360deg
-  );
-  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
-  -webkit-mask-composite:xor;
-  mask-composite:exclude;
-  opacity:0;
-  filter:drop-shadow(0 0 7px rgba(242,189,103,.22));
-  animation:positionContourTrace 1.08s cubic-bezier(.2,.72,.18,1) both;
-}
-#positions.on>.card:after{
-  content:"";
+.positionTraceSvg{
   position:absolute;
   inset:0;
-  border-radius:inherit;
+  width:100%;
+  height:100%;
+  z-index:6;
   pointer-events:none;
-  z-index:-1;
-  background:radial-gradient(220px 90px at 18% 0%,rgba(242,189,103,.085),transparent 72%);
+  overflow:visible;
+}
+.positionTraceStroke{
+  fill:none;
+  stroke:url(#positionTraceGradient);
+  stroke-width:1.8;
+  vector-effect:non-scaling-stroke;
+  stroke-linecap:round;
+  stroke-dasharray:18 82;
+  stroke-dashoffset:100;
   opacity:0;
-  animation:positionSurfaceBloom 1.25s ease-out both;
+  filter:drop-shadow(0 0 4px rgba(242,189,103,.70)) drop-shadow(0 0 8px rgba(123,220,245,.24));
 }
-@keyframes positionContourTrace{
-  0%{--position-trace-angle:-55deg;opacity:0}
-  10%{opacity:.25}
-  22%{opacity:1}
-  78%{opacity:1}
-  100%{--position-trace-angle:305deg;opacity:0}
+.positionTraceStroke.trace-run{
+  animation:positionStrokeRun 1.32s cubic-bezier(.18,.72,.2,1) both;
 }
-@keyframes positionSurfaceBloom{
-  0%{opacity:0}
-  24%{opacity:.9}
-  100%{opacity:.32}
+#positions>.card.trace-active{
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.04),
+    0 18px 42px rgba(0,0,0,.14),
+    0 0 22px rgba(242,189,103,.07);
+}
+@keyframes positionStrokeRun{
+  0%{stroke-dashoffset:100;opacity:0}
+  8%{opacity:.25}
+  18%{opacity:1}
+  82%{opacity:1}
+  100%{stroke-dashoffset:0;opacity:0}
 }
 
 .hero{
@@ -728,7 +712,7 @@ input:focus,textarea:focus,select:focus{
   .aiZoneCard img{height:120px}
 }
 @media(prefers-reduced-motion:reduce){
-  .screen.on,.zone,#positions.on>.card:before,#positions.on>.card:after{animation:none!important}
+  .screen.on,.zone,.positionTraceStroke.trace-run{animation:none!important}
   .btn,.zoneChoice,.zoneImg img,.nav button{transition:none!important}
 }
 
@@ -772,7 +756,20 @@ input:focus,textarea:focus,select:focus{
   </div>
  </div>
 </section>
-<section id="positions" class="screen"><div class="card"><h2 data-i="zonesTitle">Позиции</h2><p data-i="zonesText">Выберите атмосферу вечера.</p></div><div class="zoneGrid" id="zoneGrid"></div></section>
+<section id="positions" class="screen"><div class="card" id="positionsHeaderCard">
+  <svg class="positionTraceSvg" id="positionTraceSvg" aria-hidden="true" preserveAspectRatio="none">
+    <defs>
+      <linearGradient id="positionTraceGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#f2bd67" stop-opacity="0"/>
+        <stop offset="38%" stop-color="#ffd998" stop-opacity="1"/>
+        <stop offset="72%" stop-color="#7bdcf5" stop-opacity=".95"/>
+        <stop offset="100%" stop-color="#7bdcf5" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+    <rect class="positionTraceStroke" x="1.5" y="1.5" width="calc(100% - 3px)" height="calc(100% - 3px)" rx="23" ry="23" pathLength="100"/>
+  </svg>
+  <h2 data-i="zonesTitle">Позиции</h2><p data-i="zonesText">Выберите атмосферу вечера.</p>
+</div><div class="zoneGrid" id="zoneGrid"></div></section>
 <section id="book" class="screen"><div class="card"><h2 data-i="bookTitle">Забронировать</h2><div class="tabs" id="stepTabs"></div><div id="stepArea"></div></div></section>
 <section id="ai" class="screen aiScreen">
   <div class="aiChat">
@@ -906,9 +903,22 @@ let aiBusy=false;
 const t=k=>(TT[lang]&&TT[lang][k])||TT.ru[k]||k;
 const z=()=>ZONES.find(x=>x.id===state.zone)||ZONES[0];
 
+function runPositionTrace(){
+  const stroke=document.querySelector('.positionTraceStroke');
+  const card=$('#positionsHeaderCard');
+  if(!stroke||!card)return;
+  stroke.classList.remove('trace-run');
+  card.classList.remove('trace-active');
+  void stroke.getBoundingClientRect();
+  stroke.classList.add('trace-run');
+  card.classList.add('trace-active');
+  clearTimeout(runPositionTrace._timer);
+  runPositionTrace._timer=setTimeout(()=>card.classList.remove('trace-active'),1350);
+}
 function go(id){
-  $$('.screen').forEach(s=>s.classList.toggle('on',s.id===id));
-  $$('[data-go]').forEach(b=>b.classList.toggle('on',b.dataset.go===id&&b.closest('.nav')));
+  $('.screen').forEach(s=>s.classList.toggle('on',s.id===id));
+  $('[data-go]').forEach(b=>b.classList.toggle('on',b.dataset.go===id&&b.closest('.nav')));
+  if(id==='positions')requestAnimationFrame(()=>requestAnimationFrame(runPositionTrace));
 }
 $$('[data-go]').forEach(b=>b.onclick=()=>go(b.dataset.go));
 $$('[data-lang]').forEach(b=>b.onclick=()=>{lang=b.dataset.lang;i18n();});
