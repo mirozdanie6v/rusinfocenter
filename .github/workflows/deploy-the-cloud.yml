@@ -69,3 +69,19 @@ jobs:
             sleep 5
           done
           test "$ok" -eq 1
+
+          ai_ok=0
+          for attempt in $(seq 1 8); do
+            ai_code=$(curl -sS --connect-timeout 5 --max-time 45 -o /tmp/thecloud-ai.json -w '%{http_code}' \
+              -X POST "$base/api/ai" \
+              -H 'Content-Type: application/json' \
+              --data '{"question":"What time are you open?","lang":"en","history":[]}' || true)
+            if [ "$ai_code" = "200" ] && jq -e '.reply | type == "string" and length > 5' /tmp/thecloud-ai.json >/dev/null 2>&1; then
+              echo "Verified live AI endpoint"
+              ai_ok=1
+              break
+            fi
+            cat /tmp/thecloud-ai.json 2>/dev/null || true
+            sleep 5
+          done
+          test "$ai_ok" -eq 1
