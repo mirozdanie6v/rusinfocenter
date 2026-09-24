@@ -119,6 +119,320 @@
 .qrBox,.receipt{margin:0 14px 12px;padding:12px;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.035);text-align:center}
 
 @media(max-width:360px){.hero h1{font-size:34px;max-width:82%}.hero p{max-width:88%}.grid2,.adminGrid{grid-template-columns:1fr}.contacts{grid-template-columns:1fr 1fr}.zoneChoice img,.bookingCard img{width:78px;height:78px}.bookingCard{grid-template-columns:78px 1fr}}
+
+/* THE CLOUD PREMIUM NIGHT HORIZON — visual layer only; structure unchanged */
+:root{
+  --night-0:#05060a;
+  --night-1:#090b11;
+  --night-2:#11151f;
+  --horizon-warm:#f4bf5f;
+  --horizon-cool:#65dcff;
+  --surface-hi:rgba(255,255,255,.065);
+  --surface-lo:rgba(255,255,255,.022);
+}
+.app{
+  background:
+    radial-gradient(520px 300px at 90% -12%,rgba(244,191,95,.13),transparent 62%),
+    radial-gradient(420px 360px at -18% 52%,rgba(101,220,255,.055),transparent 70%),
+    linear-gradient(180deg,#0a0c12 0%,#06070b 62%,#040509 100%);
+}
+.top{
+  background:linear-gradient(180deg,rgba(10,12,18,.96),rgba(7,8,12,.90));
+  border-bottom-color:rgba(255,255,255,.075);
+  box-shadow:0 10px 30px rgba(0,0,0,.18);
+}
+.logo{
+  background:
+    radial-gradient(circle at 30% 25%,rgba(244,191,95,.14),transparent 45%),
+    linear-gradient(145deg,#171c27,#11141c 58%,#1e1710);
+  border-color:rgba(244,191,95,.16);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 10px 28px rgba(0,0,0,.22);
+}
+.card{
+  background:
+    radial-gradient(180px 120px at 100% 0%,rgba(244,191,95,.035),transparent 72%),
+    linear-gradient(180deg,var(--surface-hi),var(--surface-lo));
+  border-color:rgba(255,255,255,.085);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.035),0 16px 34px rgba(0,0,0,.12);
+}
+.screen.on{
+  animation:premiumScreenIn .24s cubic-bezier(.2,.7,.2,1) both;
+}
+.hero{
+  isolation:isolate;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.04),0 24px 58px rgba(0,0,0,.28);
+}
+.hero:before{
+  content:"";
+  position:absolute;
+  inset:0;
+  z-index:0;
+  pointer-events:none;
+  background:
+    linear-gradient(180deg,rgba(4,5,8,.03) 0%,rgba(4,5,8,.08) 42%,rgba(4,5,8,.55) 100%),
+    radial-gradient(280px 160px at 76% 26%,rgba(101,220,255,.055),transparent 70%),
+    radial-gradient(280px 170px at 20% 82%,rgba(244,191,95,.07),transparent 72%);
+}
+.hero:after{
+  content:"";
+  position:absolute;
+  left:18px;
+  right:18px;
+  bottom:15px;
+  height:1px;
+  z-index:1;
+  pointer-events:none;
+  opacity:.88;
+  background:linear-gradient(90deg,transparent 0%,rgba(244,191,95,.15) 8%,rgba(244,191,95,.92) 34%,rgba(101,220,255,.72) 66%,rgba(101,220,255,.10) 90%,transparent 100%);
+  background-size:180% 100%;
+  box-shadow:0 0 10px rgba(244,191,95,.18),0 0 14px rgba(101,220,255,.10);
+  animation:horizonDrift 8s ease-in-out infinite alternate;
+}
+.hero>*{position:relative;z-index:2}
+.hero h1{
+  text-shadow:0 7px 28px rgba(0,0,0,.42);
+  font-weight:760;
+}
+.hero p{
+  color:rgba(255,247,236,.84);
+  text-shadow:0 3px 18px rgba(0,0,0,.38);
+}
+.homeUtility{
+  background:
+    radial-gradient(240px 150px at 100% 0%,rgba(101,220,255,.035),transparent 72%),
+    linear-gradient(145deg,rgba(255,255,255,.052),rgba(255,255,255,.018));
+  border-color:rgba(255,255,255,.075);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.035),0 20px 42px rgba(0,0,0,.20);
+}
+.contact,.mapCard,.bookingCard,.crmBooking{
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.025);
+}
+.btn{
+  transition:transform .16s ease,box-shadow .18s ease,filter .18s ease,background .18s ease;
+}
+.btn:active{transform:translateY(1px) scale(.985);filter:brightness(.98)}
+.btn:not(.secondary):not(.bad){
+  box-shadow:0 10px 26px rgba(244,191,95,.14),inset 0 1px 0 rgba(255,255,255,.18);
+}
+.zone{
+  position:relative;
+  border-color:rgba(255,255,255,.085);
+  background:
+    radial-gradient(220px 120px at 100% 0%,rgba(101,220,255,.03),transparent 72%),
+    linear-gradient(180deg,rgba(255,255,255,.052),rgba(255,255,255,.022));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.025),0 18px 42px rgba(0,0,0,.14);
+  animation:zoneReveal .44s cubic-bezier(.2,.7,.2,1) both;
+}
+.zone:nth-child(2){animation-delay:.035s}
+.zone:nth-child(3){animation-delay:.07s}
+.zone:nth-child(4){animation-delay:.105s}
+.zone:nth-child(5){animation-delay:.14s}
+.zoneImg:before{
+  content:"";
+  position:absolute;
+  inset:0;
+  z-index:1;
+  pointer-events:none;
+  background:linear-gradient(180deg,rgba(3,5,9,.03),rgba(3,5,9,.08) 48%,rgba(3,5,9,.52) 100%);
+}
+.zoneImg:after{
+  z-index:1;
+  height:104px;
+  background:linear-gradient(transparent,rgba(2,4,8,.76));
+}
+.zoneImg img{
+  filter:saturate(.94) contrast(1.035) brightness(.93);
+  transform:scale(1.002);
+  transition:transform .65s cubic-bezier(.2,.7,.2,1),filter .35s ease;
+}
+.zone:active .zoneImg img{transform:scale(1.012);filter:saturate(.98) contrast(1.04) brightness(.96)}
+.zoom{z-index:3;backdrop-filter:blur(10px);border-color:rgba(255,255,255,.14)}
+.zoneBody h3{letter-spacing:-.018em}
+.tag{
+  background:rgba(121,228,170,.075);
+  border-color:rgba(121,228,170,.18);
+}
+.zoneChoice{
+  position:relative;
+  overflow:hidden;
+  isolation:isolate;
+  transition:border-color .22s ease,background .22s ease,box-shadow .22s ease,transform .18s ease;
+}
+.zoneChoice:active{transform:scale(.992)}
+.zoneChoice.on{
+  border-color:rgba(244,191,95,.42);
+  background:
+    radial-gradient(180px 90px at 100% 0%,rgba(101,220,255,.055),transparent 70%),
+    linear-gradient(145deg,rgba(244,191,95,.09),rgba(255,255,255,.035));
+  box-shadow:0 14px 30px rgba(0,0,0,.14),inset 0 1px 0 rgba(255,255,255,.035);
+}
+.zoneChoice.on:after{
+  content:"";
+  position:absolute;
+  left:10px;
+  right:10px;
+  bottom:0;
+  height:1px;
+  background:linear-gradient(90deg,transparent,rgba(244,191,95,.95) 28%,rgba(101,220,255,.78) 70%,transparent);
+  box-shadow:0 0 10px rgba(244,191,95,.16),0 0 10px rgba(101,220,255,.08);
+}
+.zoneChoice img{
+  filter:saturate(.95) contrast(1.025) brightness(.94);
+  transition:transform .55s ease,filter .3s ease;
+}
+.zoneChoice.on img{
+  animation:selectedBreath 5.2s ease-in-out infinite alternate;
+  filter:saturate(.98) contrast(1.035) brightness(.98);
+}
+.tabs{
+  position:relative;
+  isolation:isolate;
+  gap:7px;
+  padding-top:7px;
+}
+.tabs:before{
+  content:"";
+  position:absolute;
+  left:8px;
+  right:8px;
+  top:0;
+  height:1px;
+  opacity:.48;
+  background:linear-gradient(90deg,rgba(244,191,95,.75),rgba(101,220,255,.55),rgba(255,255,255,.06));
+}
+.tabs button{
+  position:relative;
+  overflow:hidden;
+  border-color:rgba(255,255,255,.08);
+  background:rgba(255,255,255,.035);
+  color:rgba(255,255,255,.72);
+  transition:background .18s ease,border-color .18s ease,color .18s ease,transform .16s ease;
+}
+.tabs button.on{
+  background:linear-gradient(180deg,rgba(244,191,95,.14),rgba(244,191,95,.065));
+  border-color:rgba(244,191,95,.34);
+  color:var(--gold2);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+}
+.tabs button.on:after{
+  content:"";
+  position:absolute;
+  left:9px;
+  right:9px;
+  bottom:2px;
+  height:1px;
+  background:linear-gradient(90deg,rgba(244,191,95,.95),rgba(101,220,255,.58));
+}
+input,textarea,select,.datePickerBtn{
+  background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.032));
+  border-color:rgba(255,255,255,.095);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.02);
+  transition:border-color .18s ease,box-shadow .18s ease,background .18s ease;
+}
+input:focus,textarea:focus,select:focus{
+  border-color:rgba(244,191,95,.34);
+  box-shadow:0 0 0 3px rgba(244,191,95,.055),inset 0 1px 0 rgba(255,255,255,.025);
+}
+.tableMap{
+  background:
+    radial-gradient(220px 120px at 50% 15%,rgba(244,191,95,.035),transparent 74%),
+    linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.018));
+}
+.table.on{
+  border-color:rgba(244,191,95,.58);
+  background:linear-gradient(180deg,rgba(244,191,95,.19),rgba(244,191,95,.08));
+  box-shadow:0 0 0 1px rgba(244,191,95,.06),0 10px 24px rgba(0,0,0,.16);
+}
+.pay.on{
+  border-color:rgba(244,191,95,.42);
+  background:linear-gradient(180deg,rgba(244,191,95,.13),rgba(244,191,95,.055));
+}
+.aiChat{
+  background:
+    radial-gradient(320px 220px at 100% 0%,rgba(101,220,255,.032),transparent 72%),
+    radial-gradient(300px 190px at 0% 100%,rgba(244,191,95,.035),transparent 72%),
+    rgba(7,8,12,.28);
+}
+.aiMark{
+  box-shadow:0 14px 34px rgba(0,0,0,.18),inset 0 1px 0 rgba(255,255,255,.035);
+}
+.bubble.bot{
+  background:linear-gradient(180deg,rgba(255,255,255,.058),rgba(255,255,255,.034));
+  border-color:rgba(255,255,255,.07);
+}
+.bubble.user{
+  background:linear-gradient(180deg,rgba(244,191,95,.135),rgba(244,191,95,.075));
+  border-color:rgba(244,191,95,.17);
+}
+.aiZoneCard{
+  position:relative;
+  overflow:hidden;
+  border-color:rgba(244,191,95,.15);
+  background:
+    radial-gradient(180px 90px at 100% 0%,rgba(101,220,255,.045),transparent 72%),
+    linear-gradient(145deg,rgba(244,191,95,.055),rgba(255,255,255,.025));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.025),0 14px 28px rgba(0,0,0,.12);
+}
+.aiZoneCard:after{
+  content:"";
+  position:absolute;
+  left:9px;
+  right:9px;
+  bottom:0;
+  height:1px;
+  background:linear-gradient(90deg,transparent,rgba(244,191,95,.90) 30%,rgba(101,220,255,.64) 72%,transparent);
+}
+.aiZoneCard img{
+  filter:saturate(.96) contrast(1.03) brightness(.95);
+}
+.aiComposer{
+  border-top-color:rgba(255,255,255,.06);
+  background:linear-gradient(180deg,rgba(7,8,12,.88),rgba(6,7,10,.985));
+}
+.aiInputRow{
+  border-color:rgba(255,255,255,.09);
+  background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.032));
+}
+.bookingCard{
+  background:
+    radial-gradient(160px 90px at 100% 0%,rgba(101,220,255,.028),transparent 72%),
+    linear-gradient(180deg,rgba(255,255,255,.048),rgba(255,255,255,.024));
+  border-color:rgba(255,255,255,.075);
+}
+.nav{
+  background:linear-gradient(180deg,rgba(11,12,17,.90),rgba(6,7,11,.98));
+  border-top-color:rgba(255,255,255,.065);
+  box-shadow:0 -12px 30px rgba(0,0,0,.18);
+}
+.nav button{
+  transition:background .18s ease,color .18s ease,transform .15s ease;
+}
+.nav button:active{transform:scale(.96)}
+.nav button.on{
+  background:linear-gradient(180deg,rgba(244,191,95,.13),rgba(244,191,95,.065));
+  color:var(--gold2);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.025);
+}
+@keyframes premiumScreenIn{
+  from{opacity:.72;transform:translateY(4px)}
+  to{opacity:1;transform:none}
+}
+@keyframes zoneReveal{
+  from{opacity:.72;transform:translateY(7px)}
+  to{opacity:1;transform:none}
+}
+@keyframes selectedBreath{
+  from{transform:scale(1.002)}
+  to{transform:scale(1.015)}
+}
+@keyframes horizonDrift{
+  from{background-position:0% 50%;opacity:.74}
+  to{background-position:100% 50%;opacity:.96}
+}
+@media(prefers-reduced-motion:reduce){
+  .screen.on,.zone,.zoneChoice.on img,.hero:after{animation:none!important}
+  .btn,.zoneChoice,.zoneImg img,.nav button{transition:none!important}
+}
 </style>
 </head>
 <body>
