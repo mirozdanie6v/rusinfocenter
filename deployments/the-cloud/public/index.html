@@ -16,6 +16,30 @@
 .consent{display:flex;gap:10px;align-items:flex-start;margin:12px 14px;color:var(--muted);font-size:13px;line-height:1.4}
 .consent input{width:20px;min-height:20px;accent-color:#f4bf5f;margin-top:2px}
 .channelPill{display:inline-flex;align-items:center;gap:6px;border:1px solid rgba(121,228,170,.25);background:rgba(121,228,170,.10);color:#c2f3d7;border-radius:999px;padding:6px 9px;font-size:12px;font-weight:900}
+.svgSprite{position:absolute;width:0;height:0;overflow:hidden}
+.stage{inset:72px 0 calc(94px + var(--safe)) 0}
+.homeUtility{margin-top:14px;padding:12px;border:1px solid rgba(255,255,255,.09);border-radius:28px;background:linear-gradient(145deg,rgba(255,255,255,.055),rgba(255,255,255,.022));box-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 18px 42px rgba(0,0,0,.22)}
+.contacts{grid-template-columns:1fr 1fr;gap:9px}
+.contact{min-height:74px;justify-content:flex-start;gap:10px;padding:10px 12px;text-align:left;border-radius:20px;border:1px solid rgba(255,255,255,.10);background:linear-gradient(145deg,rgba(255,255,255,.07),rgba(255,255,255,.03));box-shadow:inset 0 1px 0 rgba(255,255,255,.035);transition:.18s ease}
+.contact:active{transform:scale(.985);background:rgba(244,191,95,.09)}
+.contactIcon{width:38px;height:38px;border-radius:13px;display:grid;place-items:center;flex:none;background:linear-gradient(145deg,rgba(244,191,95,.16),rgba(244,191,95,.055));border:1px solid rgba(244,191,95,.28);color:var(--gold2)}
+.contactIcon svg,.contactChevron,.mapPin svg,.mapLink svg,.navIcon{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.contactText{min-width:0;flex:1;color:#fff;font-size:12.5px;line-height:1.18;font-weight:850;letter-spacing:-.01em}
+.contactChevron{width:16px;height:16px;color:rgba(255,255,255,.42);flex:none}
+.mapCard{margin-top:10px;border:1px solid rgba(255,255,255,.10);border-radius:22px;overflow:hidden;background:#0c0f15;box-shadow:inset 0 1px 0 rgba(255,255,255,.035)}
+.mapFrame{height:178px;position:relative;overflow:hidden;background:#11151d}
+.mapFrame iframe{width:100%;height:100%;border:0;display:block;filter:saturate(.82) contrast(1.03)}
+.mapMeta{display:grid;grid-template-columns:38px minmax(0,1fr);gap:10px;padding:12px;align-items:center;background:linear-gradient(180deg,rgba(18,21,29,.98),rgba(10,12,17,.98))}
+.mapPin{width:38px;height:38px;border-radius:13px;display:grid;place-items:center;color:var(--gold2);border:1px solid rgba(244,191,95,.26);background:rgba(244,191,95,.08)}
+.mapCopy{min-width:0}.mapCopy h3{font-size:14px;line-height:1.2;margin-bottom:3px}.mapCopy p{font-size:11.5px;color:#9f9aa3}
+.mapLink{grid-column:1 / -1;min-height:44px;margin-top:1px;border-radius:14px;border:1px solid rgba(244,191,95,.28);background:linear-gradient(180deg,rgba(244,191,95,.13),rgba(244,191,95,.075));color:var(--gold2);display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;font-size:12.5px;font-weight:900}
+.mapLink svg{width:16px;height:16px}
+.nav{left:10px;right:10px;bottom:8px;height:calc(76px + var(--safe));padding:6px 5px calc(6px + var(--safe));gap:3px;border:1px solid rgba(255,255,255,.09);border-radius:24px;background:linear-gradient(180deg,rgba(14,16,22,.92),rgba(7,8,12,.96));box-shadow:0 16px 40px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.045);backdrop-filter:blur(22px)}
+.nav button{min-width:0;min-height:0;border-radius:18px;gap:4px;font-size:9.5px;font-weight:800;color:#9e9aa4;letter-spacing:-.01em;transition:.18s ease}
+.nav button .navIcon{width:21px;height:21px}
+.nav button.on{color:var(--gold2);background:linear-gradient(180deg,rgba(244,191,95,.16),rgba(244,191,95,.08));box-shadow:inset 0 0 0 1px rgba(244,191,95,.24),0 7px 18px rgba(244,191,95,.07)}
+.nav button:active{transform:scale(.97)}
+@media(max-width:360px){.contact{min-height:68px;padding:9px}.contactIcon{width:34px;height:34px}.contactText{font-size:11.5px}.mapFrame{height:160px}.nav button{font-size:8.8px}}
 .payShell{overflow:hidden}
 .payTop{display:grid;grid-template-columns:82px minmax(0,1fr);gap:12px;align-items:center;padding:12px 14px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.025)}
 .payTop img{width:82px;height:72px;max-width:82px;object-fit:cover;display:block;border-radius:16px}
@@ -27,17 +51,41 @@
 </style>
 </head>
 <body>
+<svg class="svgSprite" aria-hidden="true">
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M5 12l-2 0l9-9l9 9h-2"/><path d="M5 10v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-10"/><path d="M9 21v-6a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v6"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><path d="M4 4h6v6h-6z"/><path d="M14 4h6v6h-6z"/><path d="M4 14h6v6h-6z"/><path d="M14 14h6v6h-6z"/></symbol>
+  <symbol id="i-calendar" viewBox="0 0 24 24"><path d="M4 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-12a2 2 0 0 1-2-2z"/><path d="M16 3v4"/><path d="M8 3v4"/><path d="M4 11h16"/><path d="M8 15h2v2h-2z"/></symbol>
+  <symbol id="i-sparkles" viewBox="0 0 24 24"><path d="M12 3l1.5 4.5l4.5 1.5l-4.5 1.5l-1.5 4.5l-1.5-4.5l-4.5-1.5l4.5-1.5z"/><path d="M19 15l.75 2.25l2.25 .75l-2.25 .75l-.75 2.25l-.75-2.25l-2.25-.75l2.25-.75z"/><path d="M5 3l.5 1.5l1.5 .5l-1.5 .5l-.5 1.5l-.5-1.5l-1.5-.5l1.5-.5z"/></symbol>
+  <symbol id="i-receipt" viewBox="0 0 24 24"><path d="M5 3v18l3-2l2 2l2-2l2 2l2-2l3 2v-18l-3 2l-2-2l-2 2l-2-2l-2 2z"/><path d="M9 9h6"/><path d="M9 13h6"/><path d="M9 17h3"/></symbol>
+  <symbol id="i-message" viewBox="0 0 24 24"><path d="M8 9h8"/><path d="M8 13h6"/><path d="M12 21a9 9 0 1 0-8.2-5.3l-1.8 5.3l5.3-1.8a9 9 0 0 0 4.7 1.8z"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24"><path d="M5 4h4l2 5l-2.5 1.5a11 11 0 0 0 5 5l1.5-2.5l5 2v4a2 2 0 0 1-2 2a15 15 0 0 1-15-15a2 2 0 0 1 2-2"/></symbol>
+  <symbol id="i-instagram" viewBox="0 0 24 24"><path d="M4 8a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v8a4 4 0 0 1-4 4h-8a4 4 0 0 1-4-4z"/><path d="M9 12a3 3 0 1 0 6 0a3 3 0 0 0-6 0"/><path d="M16.5 7.5v.01"/></symbol>
+  <symbol id="i-facebook" viewBox="0 0 24 24"><path d="M7 10v4h3v7h4v-7h3l1-4h-4v-2a1 1 0 0 1 1-1h3v-4h-3a5 5 0 0 0-5 5v2z"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M9 11a3 3 0 1 0 6 0a3 3 0 0 0-6 0"/><path d="M19.5 11c0 4.5-7.5 10-7.5 10s-7.5-5.5-7.5-10a7.5 7.5 0 1 1 15 0"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M9 6l6 6l-6 6"/></symbol>
+  <symbol id="i-external" viewBox="0 0 24 24"><path d="M12 6h-6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/><path d="M11 13l9-9"/><path d="M15 4h5v5"/></symbol>
+</svg>
 <div class="app">
 <header class="top"><div class="brand"><div class="logo">☁</div><div><b>The Cloud</b><span data-i="sub">Bar Nha Trang</span></div></div><div class="topActions"><button class="adminBtn" data-go="admin" data-i="admin">Админ</button><div class="lang"><button data-lang="ru" class="on">RU</button><button data-lang="en">EN</button><button data-lang="vi">VI</button></div></div></header>
 <main class="stage">
 <section id="home" class="screen on">
  <div class="hero"><h1>The Cloud<br>Nha Trang</h1><p data-i="heroText">Вечерний rooftop-бар с кальяном, коктейлями, видом на город и зонами для разного настроения.</p><div class="row" style="margin-top:18px"><button class="btn" data-go="book" data-i="bookNow">Забронировать</button><button class="btn secondary" data-go="ai" data-i="askAi">Спросить AI</button></div></div>
- <div class="card"><div class="contacts">
-  <a class="contact" href="https://wa.me/84825190251" target="_blank"><span class="ico">💬</span><span data-i="manager">Связаться с менеджером</span></a>
-  <a class="contact" href="https://www.instagram.com/thecloudbar_nt/" target="_blank"><span class="ico">📸</span><span>Instagram</span></a>
-  <a class="contact" href="tel:+84825190251"><span class="ico">📞</span><span data-i="call">Позвонить</span></a>
-  <a class="contact" href="https://www.facebook.com/thecloudbar.vn" target="_blank"><span class="ico">f</span><span>Facebook</span></a>
- </div><div class="map"><div><h3>163 Nguyễn Thiện Thuật</h3><p>Nha Trang · 12:00–02:00</p><a href="https://g.co/kgs/TyDW29u" target="_blank" data-i="openMaps">Открыть в Google Maps</a></div><div style="font-size:46px">📍</div></div></div>
+ <div class="homeUtility">
+  <div class="contacts">
+    <a class="contact" href="https://wa.me/84825190251" target="_blank" rel="noopener"><span class="contactIcon"><svg><use href="#i-message"/></svg></span><span class="contactText" data-i="manager">Связаться с менеджером</span><svg class="contactChevron"><use href="#i-chevron"/></svg></a>
+    <a class="contact" href="https://www.instagram.com/thecloudbar_nt/" target="_blank" rel="noopener"><span class="contactIcon"><svg><use href="#i-instagram"/></svg></span><span class="contactText">Instagram</span><svg class="contactChevron"><use href="#i-chevron"/></svg></a>
+    <a class="contact" href="tel:+84825190251"><span class="contactIcon"><svg><use href="#i-phone"/></svg></span><span class="contactText" data-i="call">Позвонить</span><svg class="contactChevron"><use href="#i-chevron"/></svg></a>
+    <a class="contact" href="https://www.facebook.com/thecloudbar.vn" target="_blank" rel="noopener"><span class="contactIcon"><svg><use href="#i-facebook"/></svg></span><span class="contactText">Facebook</span><svg class="contactChevron"><use href="#i-chevron"/></svg></a>
+  </div>
+  <div class="mapCard">
+    <div class="mapFrame"><iframe title="The Cloud — 163 Nguyễn Thiện Thuật, Nha Trang" src="https://www.google.com/maps?q=163%20Nguy%E1%BB%85n%20Thi%E1%BB%87n%20Thu%E1%BA%ADt%2C%20Nha%20Trang%2C%20Vietnam&z=16&output=embed" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe></div>
+    <div class="mapMeta">
+      <span class="mapPin"><svg><use href="#i-pin"/></svg></span>
+      <div class="mapCopy"><h3>163 Nguyễn Thiện Thuật</h3><p>Nha Trang · 12:00–02:00</p></div>
+      <a class="mapLink" href="https://g.co/kgs/TyDW29u" target="_blank" rel="noopener"><span data-i="openMaps">Открыть в Google Maps</span><svg><use href="#i-external"/></svg></a>
+    </div>
+  </div>
+ </div>
 </section>
 <section id="positions" class="screen"><div class="card"><h2 data-i="zonesTitle">Позиции</h2><p data-i="zonesText">Выберите атмосферу вечера.</p></div><div class="zoneGrid" id="zoneGrid"></div></section>
 <section id="book" class="screen"><div class="card"><h2 data-i="bookTitle">Забронировать</h2><div class="tabs" id="stepTabs"></div><div id="stepArea"></div></div></section>
@@ -45,7 +93,7 @@
 <section id="mine" class="screen"><div class="card"><h2 data-i="mineTitle">Брони</h2><p data-i="mineText">Ваши брони, выбранная позиция и статус оплаты.</p></div><div id="bookingList"></div></section>
 <section id="admin" class="screen"><div class="card"><h2 data-i="adminTitle">Админ</h2><p data-i="adminText">Заявки, столы, депозиты, каналы и настройки будущей CRM/POS.</p></div><div class="adminGrid"><div class="metric"><b id="mReq">0</b><span data-i="requests">Заявки</span></div><div class="metric"><b id="mPaid">0</b><span data-i="paid">Оплачено</span></div><div class="metric"><b>17</b><span data-i="tables">Столы</span></div><div class="metric"><b>4</b><span data-i="channels">Каналы</span></div></div><div class="card"><h3 data-i="today">Сегодня</h3><div id="adminList"></div></div><div class="card"><h3 data-i="settings">Настройки</h3><div class="adminGrid"><div class="metric"><span>18:00–22:30</span><b>500k</b></div><div class="metric"><span>VIP / View</span><b>1M</b></div><div class="metric"><span>WhatsApp</span><b>ON</b></div><div class="metric"><span>CRM/POS</span><b>Map</b></div></div></div></section>
 </main>
-<nav class="nav"><button class="on" data-go="home"><span class="ico">🏠</span><span data-i="navHome">Главная</span></button><button data-go="positions"><span class="ico">🪟</span><span data-i="navZones">Позиции</span></button><button data-go="book"><span class="ico">📅</span><span data-i="navBook">Забронировать</span></button><button data-go="ai"><span class="ico">✨</span><span data-i="navAi">AI</span></button><button data-go="mine"><span class="ico">🧾</span><span data-i="navMine">Брони</span></button></nav>
+<nav class="nav"><button class="on" data-go="home"><svg class="navIcon"><use href="#i-home"/></svg><span data-i="navHome">Главная</span></button><button data-go="positions"><svg class="navIcon"><use href="#i-grid"/></svg><span data-i="navZones">Позиции</span></button><button data-go="book"><svg class="navIcon"><use href="#i-calendar"/></svg><span data-i="navBook">Забронировать</span></button><button data-go="ai"><svg class="navIcon"><use href="#i-sparkles"/></svg><span data-i="navAi">AI</span></button><button data-go="mine"><svg class="navIcon"><use href="#i-receipt"/></svg><span data-i="navMine">Брони</span></button></nav>
 </div>
 <div class="modalBg" id="modal"><div class="modal"><img id="modalImg"><div class="modalBody"><button class="close" id="close">×</button><h2 id="modalTitle"></h2><p id="modalTag" style="color:var(--gold2);font-weight:900;margin-bottom:8px"></p><p id="modalText"></p></div></div></div>
 <script>
