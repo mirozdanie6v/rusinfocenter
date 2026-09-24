@@ -9,6 +9,9 @@ on:
       - '.github/workflows/deploy-max-tour-shared.yml'
       - '.deploy-uniq-smart-rent'
       - '.github/workflows/deploy-uniq-smart-rent-shared.yml'
+      - '.deploy-integration-service'
+      - '.github/workflows/deploy-integration-service-shared.yml'
+      - '.github/workflows/deploy-cloudflare.yml'
   workflow_dispatch:
 
 permissions:
