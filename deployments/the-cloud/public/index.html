@@ -40,6 +40,19 @@
 .nav button.on{color:var(--gold2);background:linear-gradient(180deg,rgba(244,191,95,.16),rgba(244,191,95,.08));box-shadow:inset 0 0 0 1px rgba(244,191,95,.24),0 7px 18px rgba(244,191,95,.07)}
 .nav button:active{transform:scale(.97)}
 @media(max-width:360px){.contact{min-height:68px;padding:9px}.contactIcon{width:34px;height:34px}.contactText{font-size:11.5px}.mapFrame{height:160px}.nav button{font-size:8.8px}}
+.calendarWrap{margin-top:8px;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.035);overflow:hidden}
+.datePickerBtn{width:100%;min-height:50px;border:1px solid var(--line);border-radius:16px;background:rgba(255,255,255,.055);color:#fff;padding:0 13px;display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left}
+.datePickerBtn svg{width:19px;height:19px;fill:none;stroke:var(--gold2);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.calHead{display:grid;grid-template-columns:40px 1fr 40px;align-items:center;padding:9px 8px;border-bottom:1px solid var(--line)}
+.calHead b{text-align:center;font-size:13px;text-transform:capitalize}
+.calHead button{min-height:36px;border:0;border-radius:12px;background:rgba(255,255,255,.05);color:#fff;font-size:20px}
+.calGrid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;padding:8px}
+.calDow{display:grid;place-items:center;min-height:25px;color:var(--muted);font-size:10px;font-weight:900;text-transform:uppercase}
+.calDay{min-height:36px;border:0;border-radius:11px;background:transparent;color:#fff;font-size:12px;font-weight:800}
+.calDay.today{box-shadow:inset 0 0 0 1px rgba(244,191,95,.35)}
+.calDay.selected{background:var(--gold);color:#201304}
+.calDay[disabled]{opacity:.24}
+.calBlank{min-height:36px}
 .payShell{overflow:hidden}
 .payTop{display:grid;grid-template-columns:82px minmax(0,1fr);gap:12px;align-items:center;padding:12px 14px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.025)}
 .payTop img{width:82px;height:72px;max-width:82px;object-fit:cover;display:block;border-radius:16px}
@@ -121,7 +134,9 @@ vi:{tag:"Riêng tư hơn",desc:"Rộng rãi, yên tĩnh hơn và thoải mái ch
 ];
 const zt=(zone,key)=>zone?.copy?.[lang]?.[key]||zone?.copy?.ru?.[key]||"";
 let lang='ru', step=0, maxStep=0;
-let state={zone:'roof',table:'T1',payMethod:'',payStage:'choose',consent:false,name:'',phone:'+84 825 190 251',note:'',guests:2,bookings:[],err:'',_booked:false};
+const localISO=(d=new Date())=>{const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${day}`;};
+let state={zone:'roof',table:'T1',payMethod:'',payStage:'choose',consent:false,name:'',phone:'+84 825 190 251',note:'',guests:2,date:localISO(),time:'19:30',calOpen:false,bookings:[],err:'',_booked:false};
+let calCursor=new Date(); calCursor.setDate(1); calCursor.setHours(12,0,0,0);
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const TT={
 ru:{sub:"Bar Nha Trang",admin:"Админ",heroText:"Вечерний rooftop-бар с кальяном, коктейлями, видом на город и позициями для разного настроения.",bookNow:"Забронировать",askAi:"Спросить AI",manager:"Связаться с менеджером",call:"Позвонить",openMaps:"Открыть в Google Maps",zonesTitle:"Позиции",zonesText:"Выберите атмосферу вечера.",bookTitle:"Забронировать",aiTitle:"AI-консультант",aiText:"Напишите любой вопрос или выберите быстрый вариант.",yourQuestion:"Ваш вопрос",aiPh:"Например: где лучше сидеть на закате, если нас 4?",ask:"Спросить",mineTitle:"Брони",mineText:"Ваши брони, выбранная позиция и статус оплаты.",adminTitle:"Админ",adminText:"Заявки, столы, депозиты, каналы и настройки будущей CRM/POS.",requests:"Заявки",paid:"Оплачено",tables:"Столы",channels:"Каналы",today:"Сегодня",settings:"Настройки",navHome:"Главная",navZones:"Позиции",navBook:"Забронировать",navAi:"AI",navMine:"Брони",details:"Детали",position:"Позиция",table:"Стол",guest:"Данные",payment:"Оплата",next:"Далее",date:"Дата",time:"Время",guests:"Гостей",name:"Имя",phone:"Телефон",comment:"Комментарий",cancel:"Отменить",empty:"Пока нет заявок",view:"View",pickPosition:"Выбрать позицию",required:"Заполните имя. Телефон подтянется из Telegram / WhatsApp / источника мини-аппа.",contactFromApp:"Контакт из мини-аппа",contactHint:"В рабочей интеграции номер/ID подтянется из Telegram, WhatsApp или другого канала, к которому прикреплён mini app.",selectPayment:"Выберите способ оплаты",qr:"QR и чек",pay:"Оплатить депозит",showQr:"Показать QR",confirmPayment:"Подтвердить оплату",receipt:"Депозит принят. Заявка отправлена менеджеру на подтверждение.",created:"Бронь создана",toMe:"Перейти в Брони",chooseMethod:"Сначала выберите способ оплаты.",checkout:"Оплата",checkoutSummary:"Данные брони",paymentConsent:"Я понимаю, что это заявка на бронь: стол и условия подтверждаются менеджером.",awaitingManager:"Ожидает подтверждения менеджером",sourceContact:"Контакт получен из источника mini app",recommended:"Рекомендую",toBooking:"Перейти к бронированию",viewQ:"Хочу красивый вид",shishaQ:"Нужен кальян",groupQ:"Мы компанией",sunsetQ:"Где лучше на закат?"},
@@ -165,20 +180,45 @@ function nextTo(n){ maxStep=Math.max(maxStep,n); step=n; state.err=''; renderBoo
 function phoneOk(){return !!state.phone && state.phone.length>5;}
 function canPay(){return state.name.trim().length>1 && phoneOk();}
 
+const localeCode=()=>({ru:'ru-RU',en:'en-US',vi:'vi-VN'}[lang]||'en-US');
+function dateFromISO(iso){const [y,m,d]=(iso||localISO()).split('-').map(Number);return new Date(y,m-1,d,12,0,0,0);}
+function formatDateLabel(iso=state.date){return new Intl.DateTimeFormat(localeCode(),{day:'numeric',month:'long',year:'numeric'}).format(dateFromISO(iso));}
+function toggleCalendar(){
+  if(!state.calOpen){const d=dateFromISO(state.date);calCursor=new Date(d.getFullYear(),d.getMonth(),1,12);}
+  state.calOpen=!state.calOpen;renderBook();
+}
+function moveCalendar(delta){calCursor=new Date(calCursor.getFullYear(),calCursor.getMonth()+delta,1,12);renderBook();}
+function pickDate(iso){state.date=iso;state.calOpen=false;renderBook();}
+function renderCalendar(){
+  const y=calCursor.getFullYear(),m=calCursor.getMonth();
+  const month=new Intl.DateTimeFormat(localeCode(),{month:'long',year:'numeric'}).format(calCursor);
+  const dow=Array.from({length:7},(_,i)=>new Intl.DateTimeFormat(localeCode(),{weekday:'short'}).format(new Date(2024,0,1+i,12)));
+  const first=(new Date(y,m,1,12).getDay()+6)%7;
+  const total=new Date(y,m+1,0,12).getDate();
+  const today=dateFromISO(localISO()); today.setHours(0,0,0,0);
+  let cells=Array(first).fill('<div class="calBlank"></div>');
+  for(let d=1;d<=total;d++){
+    const dt=new Date(y,m,d,12),iso=localISO(dt),past=dt<today;
+    cells.push(`<button type="button" class="calDay ${iso===localISO()?'today':''} ${iso===state.date?'selected':''}" ${past?'disabled':''} onclick="pickDate('${iso}')">${d}</button>`);
+  }
+  return `<div class="calendarWrap"><div class="calHead"><button type="button" onclick="moveCalendar(-1)">‹</button><b>${month}</b><button type="button" onclick="moveCalendar(1)">›</button></div><div class="calGrid">${dow.map(x=>`<div class="calDow">${x}</div>`).join('')}${cells.join('')}</div></div>`;
+}
+const paymentMethods=()=>lang==='ru'?['Сбер','VNPay','Kaspi']:['Sber','VNPay','Kaspi'];
+
 function renderBook(){
   const names=['details','position','table','guest','payment'];
   $('#stepTabs').innerHTML=names.map((n,i)=>`<button class="${i===step?'on':''}" ${i>maxStep?'disabled':''} data-step="${i}">${i+1}. ${t(n)}</button>`).join('');
   $$('[data-step]').forEach(b=>b.onclick=()=>{let target=+b.dataset.step;if(target<=maxStep){step=target;state.err='';renderBook();}});
   let html='';
-  if(step===0) html=`<div class="grid2"><div><label>${t('date')}</label><input id="bDate" type="date" lang="${lang}"></div><div><label>${t('time')}</label><input id="bTime" type="time" lang="${lang}" value="19:30"></div></div><div style="margin-top:12px"><label>${t('guests')}</label><input id="bGuests" type="number" min="1" max="12" value="${state.guests}" oninput="state.guests=this.value"></div><button class="btn full" style="margin-top:14px" onclick="nextTo(1)">${t('next')}</button>`;
+  if(step===0) html=`<div class="grid2"><div><label>${t('date')}</label><button type="button" class="datePickerBtn" onclick="toggleCalendar()"><span>${formatDateLabel()}</span><svg><use href="#i-calendar"/></svg></button>${state.calOpen?renderCalendar():''}</div><div><label>${t('time')}</label><input id="bTime" type="time" value="${state.time}" oninput="state.time=this.value"></div></div><div style="margin-top:12px"><label>${t('guests')}</label><input id="bGuests" type="number" min="1" max="12" value="${state.guests}" oninput="state.guests=this.value"></div><button class="btn full" style="margin-top:14px" onclick="nextTo(1)">${t('next')}</button>`;
   if(step===1) html=`<div class="choice">${ZONES.map(x=>`<button class="zoneChoice ${state.zone===x.id?'on':''}" onclick="state.zone='${x.id}';renderBook()"><img src="${x.img}"><div><h3>${x.name}</h3><p>${zt(x,'desc')}</p></div></button>`).join('')}</div><button class="btn full" style="margin-top:14px" onclick="nextTo(2)">${t('next')}</button>`;
   if(step===2) html=`<div class="card" style="padding:12px;border-radius:20px;display:flex;align-items:center;justify-content:space-between;gap:10px"><div><label>${t('position')}</label><h3>${z().name}</h3><p>${zt(z(),'desc')}</p></div><button class="btn secondary" onclick="openZone(state.zone)">${t('view')}</button></div><div class="tableMap">${['T1','T2','T3','T4'].map((tb,i)=>`<button class="table ${state.table===tb?'on':''} ${i===2?'busy':''}" style="left:${[14,50,72,28][i]}%;top:${[28,25,46,63][i]}%" onclick="${i===2?'':'state.table=\''+tb+'\';renderBook()'}"><b>${tb}</b><span>${[2,4,4,6][i]}p</span></button>`).join('')}</div><button class="btn full" style="margin-top:14px" onclick="nextTo(3)">${t('next')}</button>`;
   if(step===3) html=`<div><label>${t('name')}</label><input id="bName" value="${state.name}" placeholder="Anna" oninput="state.name=this.value;state.err='';updateGuestError()"></div><div class="card" style="margin:12px 0 0;padding:12px;border-radius:18px"><label>${t('contactFromApp')}</label><h3 style="margin:0">${state.phone}</h3><p>${t('contactHint')}</p></div><div style="margin-top:12px"><label>${t('comment')}</label><textarea id="bNote" oninput="state.note=this.value">${state.note}</textarea></div><div id="guestErr" class="${state.err?'error':'hidden'}">${state.err}</div><button class="btn full" style="margin-top:14px" onclick="if(canPay()){nextTo(4)}else{state.err=t('required');renderBook();}">${t('next')}</button>`;
   if(step===4) html=`<div class="payShell">
   <div class="checkoutSteps"><span class="${state.payStage==='choose'?'on':''}">1 · ${t('selectPayment')}</span><span class="${state.payStage==='qr'?'on':''}">2 · ${t('qr')}</span><span class="${state.payStage==='receipt'?'on':''}">3 · ${t('created')}</span></div>
   <div class="payTop"><img src="${z().img}"><div><h3>${z().name} · ${state.table}</h3><p>${state.name} · ${state.phone}</p><span class="channelPill">${t('sourceContact')}</span></div></div>
-  <div class="checkoutSummary"><div class="line"><span>${t('checkoutSummary')}</span><b>${z().name}</b></div><div class="line"><span>${t('guests')}</span><b>${state.guests||2}</b></div><div class="line"><span>${t('payment')}</span><b>500 000 VND</b></div><div class="line"><span>${t('awaitingManager')}</span><b>manager_confirmation</b></div></div>
-  <div class="payMethods">${['Сбер','VNPay','Kaspi'].map(m=>`<button class="pay ${state.payMethod===m?'on':''}" onclick="state.payMethod='${m}';state.payStage='choose';state.err='';renderBook()"><span>${m}</span><span>${state.payMethod===m?'✓':''}</span></button>`).join('')}</div>
+  <div class="checkoutSummary"><div class="line"><span>${t('checkoutSummary')}</span><b>${z().name}</b></div><div class="line"><span>${t('date')}</span><b>${formatDateLabel()}</b></div><div class="line"><span>${t('time')}</span><b>${state.time}</b></div><div class="line"><span>${t('guests')}</span><b>${state.guests||2}</b></div><div class="line"><span>${t('payment')}</span><b>500 000 VND</b></div></div>
+  <div class="payMethods">${paymentMethods().map(m=>`<button class="pay ${state.payMethod===m?'on':''}" onclick="state.payMethod='${m}';state.payStage='choose';state.err='';renderBook()"><span>${m}</span><span>${state.payMethod===m?'✓':''}</span></button>`).join('')}</div>
   <label class="consent"><input type="checkbox" id="payConsent" ${state.consent?'checked':''} onchange="state.consent=this.checked;state.err='';renderBook()"><span>${t('paymentConsent')}</span></label>
   <div class="payNote">${state.err||t('selectPayment')}</div>
   ${state.payStage==='qr'?`<div class="qrBox"><div class="qr"></div><p>${state.payMethod} · ${t('qr')}</p></div>`:''}
@@ -200,11 +240,11 @@ function paymentNext(){
   }
   if(state.payStage==='receipt'){resetBookingFlow();renderBookings();renderAdmin();go('mine');}
 }
-function resetBookingFlow(){step=0;maxStep=0;state.zone='roof';state.table='T1';state.name='';state.phone='+84 825 190 251';state.note='';state.payMethod='';state.payStage='choose';state.consent=false;state.err='';renderBook();}
-function addBooking(){if(state._booked)return;state._booked=true;state.bookings.unshift({id:Date.now(),zone:state.zone,zoneName:z().name,img:z().img,table:state.table,paid:true,status:'manager_confirmation',payMethod:state.payMethod,name:state.name,phone:state.phone,guests:state.guests||2});setTimeout(()=>state._booked=false,500);}
+function resetBookingFlow(){step=0;maxStep=0;state.zone='roof';state.table='T1';state.name='';state.phone='+84 825 190 251';state.note='';state.guests=2;state.date=localISO();state.time='19:30';state.calOpen=false;state.payMethod='';state.payStage='choose';state.consent=false;state.err='';renderBook();}
+function addBooking(){if(state._booked)return;state._booked=true;state.bookings.unshift({id:Date.now(),zone:state.zone,zoneName:z().name,img:z().img,table:state.table,paid:true,status:'manager_confirmation',payMethod:state.payMethod,name:state.name,phone:state.phone,guests:state.guests||2,date:state.date,time:state.time});setTimeout(()=>state._booked=false,500);}
 function renderBookings(){
   let list=$('#bookingList'); if(!list)return;
-  list.innerHTML=(state.bookings.length?state.bookings.map(b=>`<div class="bookingCard"><img src="${b.img}"><div><h3>${b.zoneName} · ${b.table}</h3><p>${b.name} · ${b.phone} · ${b.guests} ${t('guests')}</p><span class="tag">${b.payMethod} · ${t('awaitingManager')}</span></div><div class="actions"><button class="btn bad" onclick="cancelBooking(${b.id})">${t('cancel')}</button></div></div>`).join(''):`<div class="card"><p>${t('empty')}</p></div>`)+`<button class="btn full" style="margin-top:4px" onclick="startNewBooking()">${t('bookNow')}</button>`;
+  list.innerHTML=(state.bookings.length?state.bookings.map(b=>`<div class="bookingCard"><img src="${b.img}"><div><h3>${b.zoneName} · ${b.table}</h3><p>${formatDateLabel(b.date)} · ${b.time}</p><p>${b.name} · ${b.phone} · ${b.guests} ${t('guests')}</p><span class="tag">${b.payMethod} · ${t('awaitingManager')}</span></div><div class="actions"><button class="btn bad" onclick="cancelBooking(${b.id})">${t('cancel')}</button></div></div>`).join(''):`<div class="card"><p>${t('empty')}</p></div>`)+`<button class="btn full" style="margin-top:4px" onclick="startNewBooking()">${t('bookNow')}</button>`;
 }
 function startNewBooking(){resetBookingFlow();state._booked=false;go('book');}
 function cancelBooking(id){state.bookings=state.bookings.filter(b=>b.id!==id);renderBookings();renderAdmin();}
