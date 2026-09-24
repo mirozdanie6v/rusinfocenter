@@ -217,6 +217,7 @@
   </div>
 </div>
 <div class="modalBg" id="modal"><div class="modal"><img id="modalImg"><div class="modalBody"><button class="close" id="close">×</button><h2 id="modalTitle"></h2><p id="modalTag" style="color:var(--gold2);font-weight:900;margin-bottom:8px"></p><p id="modalText"></p></div></div></div>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script>
 const ZONES=[
 {id:"roof",name:"Rooftop View",img:"assets/scene-2.webp",copy:{
@@ -243,13 +244,13 @@ vi:{tag:"Riêng tư hơn",desc:"Rộng rãi, yên tĩnh hơn và thoải mái ch
 const zt=(zone,key)=>zone?.copy?.[lang]?.[key]||zone?.copy?.ru?.[key]||"";
 let lang='ru', step=0, maxStep=0;
 const localISO=(d=new Date())=>{const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${day}`;};
-let state={zone:'roof',table:'T1',payMethod:'',payStage:'choose',consent:false,name:'',phone:'+84 825 190 251',note:'',guests:2,date:localISO(),time:'19:30',calOpen:false,bookings:[],adminFilter:'all',err:'',_booked:false};
+let state={zone:'roof',table:'T1',payMethod:'',payStage:'choose',consent:false,name:'',phone:'',contactName:'',contactSource:'web',sourceUserId:'',sourceUsername:'',sourceLanguage:'',contactAvatar:'',contactVerified:false,contactResolved:false,note:'',guests:2,date:localISO(),time:'19:30',calOpen:false,bookings:[],adminFilter:'all',err:'',_booked:false};
 let calCursor=new Date(); calCursor.setDate(1); calCursor.setHours(12,0,0,0);
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const TT={
-ru:{sub:"Bar Nha Trang",admin:"Админ",heroText:"Вечерний rooftop-бар с кальяном, коктейлями, видом на город и позициями для разного настроения.",bookNow:"Забронировать",askAi:"Спросить AI",manager:"Связаться с менеджером",call:"Позвонить",openMaps:"Открыть в Google Maps",zonesTitle:"Позиции",zonesText:"Выберите атмосферу вечера.",bookTitle:"Забронировать",aiTitle:"AI-консультант",aiText:"Напишите любой вопрос или выберите быстрый вариант.",yourQuestion:"Ваш вопрос",aiPh:"Напишите сообщение…",ask:"Спросить",mineTitle:"Брони",mineText:"Ваши брони, выбранная позиция и статус оплаты.",adminTitle:"Админ",adminText:"Заявки, столы, депозиты, каналы и настройки будущей CRM/POS.",requests:"Заявки",paid:"Оплачено",tables:"Столы",channels:"Каналы",today:"Сегодня",settings:"Настройки",navHome:"Главная",navZones:"Позиции",navBook:"Забронировать",navAi:"AI",navMine:"Брони",details:"Детали",position:"Позиция",table:"Стол",guest:"Данные",payment:"Оплата",next:"Далее",date:"Дата",time:"Время",guests:"Гостей",name:"Имя",phone:"Телефон",comment:"Комментарий",cancel:"Отменить",empty:"Пока нет заявок",view:"View",pickPosition:"Выбрать позицию",required:"Заполните имя. Телефон подтянется из Telegram / WhatsApp / источника мини-аппа.",contactFromApp:"Контакт клиента",contactHint:"При подключении к Telegram, WhatsApp или другому боту / каналу контакт клиента будет передаваться в систему автоматически — вручную вводить номер не потребуется.",selectPayment:"Выберите способ оплаты",qr:"QR и чек",pay:"Оплатить депозит",showQr:"Показать QR",confirmPayment:"Подтвердить оплату",receipt:"Депозит принят. Заявка отправлена менеджеру на подтверждение.",created:"Бронь создана",toMe:"Перейти в Брони",chooseMethod:"Сначала выберите способ оплаты.",checkout:"Оплата",checkoutSummary:"Данные брони",paymentConsent:"Я понимаю, что это заявка на бронь: стол и условия подтверждаются менеджером.",awaitingManager:"Ожидает подтверждения менеджером",sourceContact:"Контакт получен из источника mini app",recommended:"Рекомендую",toBooking:"Перейти к бронированию",viewQ:"Хочу красивый вид",shishaQ:"Нужен кальян",groupQ:"Мы компанией",sunsetQ:"Где лучше на закат?"},
-en:{sub:"Bar Nha Trang",admin:"Admin",heroText:"Evening rooftop bar with shisha, cocktails, city view and positions for different moods.",bookNow:"Reserve",askAi:"Ask AI",manager:"Contact manager",call:"Call",openMaps:"Open in Google Maps",zonesTitle:"Positions",zonesText:"Choose your evening atmosphere.",bookTitle:"Reserve",aiTitle:"AI consultant",aiText:"Ask any question or choose a quick prompt.",yourQuestion:"Your question",aiPh:"Type a message…",ask:"Ask",mineTitle:"Me",mineText:"Your requests, selected position and payment status.",adminTitle:"Admin",adminText:"Requests, tables, deposits, channels and future CRM/POS settings.",requests:"Requests",paid:"Paid",tables:"Tables",channels:"Channels",today:"Today",settings:"Settings",navHome:"Home",navZones:"Positions",navBook:"Reserve",navAi:"AI",navMine:"Me",details:"Details",position:"Position",table:"Table",guest:"Details",payment:"Payment",next:"Next",date:"Date",time:"Time",guests:"Guests",name:"Name",phone:"Phone",comment:"Comment",cancel:"Cancel",empty:"No requests yet",view:"View",pickPosition:"Pick position",required:"Enter your name. Phone/contact will be pulled from Telegram / WhatsApp / app source.",contactFromApp:"Customer contact",contactHint:"When connected to Telegram, WhatsApp or another bot / channel, the customer contact will be passed to the system automatically — no manual phone entry will be needed.",selectPayment:"Choose payment method",qr:"QR and receipt",pay:"Pay deposit",showQr:"Show QR",confirmPayment:"Confirm payment",receipt:"Deposit accepted. Request sent to manager for confirmation.",created:"Reservation created",toMe:"Go to Bookings",chooseMethod:"Choose a payment method first.",checkout:"Payment",checkoutSummary:"Reservation details",paymentConsent:"I understand this is a booking request: table and terms are confirmed by a manager.",awaitingManager:"Awaiting manager confirmation",sourceContact:"Contact pulled from mini app source",recommended:"I recommend",toBooking:"Go to reservation",viewQ:"I want a great view",shishaQ:"Need shisha",groupQ:"We are a group",sunsetQ:"Best sunset seats?"},
-vi:{sub:"Bar Nha Trang",admin:"Admin",heroText:"Rooftop bar buổi tối với shisha, cocktail, view thành phố và nhiều vị trí theo cảm xúc.",bookNow:"Đặt bàn",askAi:"Hỏi AI",manager:"Liên hệ quản lý",call:"Gọi",openMaps:"Mở Google Maps",zonesTitle:"Vị trí",zonesText:"Chọn không khí buổi tối.",bookTitle:"Đặt bàn",aiTitle:"Tư vấn AI",aiText:"Nhập câu hỏi bất kỳ hoặc chọn gợi ý nhanh.",yourQuestion:"Câu hỏi của bạn",aiPh:"Nhập tin nhắn…",ask:"Hỏi",mineTitle:"Tôi",mineText:"Yêu cầu, vị trí đã chọn và trạng thái thanh toán.",adminTitle:"Admin",adminText:"Yêu cầu, bàn, đặt cọc, kênh và cài đặt CRM/POS.",requests:"Yêu cầu",paid:"Đã trả",tables:"Bàn",channels:"Kênh",today:"Hôm nay",settings:"Cài đặt",navHome:"Home",navZones:"Vị trí",navBook:"Đặt bàn",navAi:"AI",navMine:"Tôi",details:"Chi tiết",position:"Vị trí",table:"Bàn",guest:"Thông tin",payment:"Thanh toán",next:"Tiếp",date:"Ngày",time:"Giờ",guests:"Khách",name:"Tên",phone:"Điện thoại",comment:"Ghi chú",cancel:"Hủy",empty:"Chưa có yêu cầu",view:"View",pickPosition:"Chọn vị trí",required:"Nhập tên. Số điện thoại/liên hệ sẽ lấy từ Telegram / WhatsApp / nguồn mini app.",contactFromApp:"Liên hệ khách hàng",contactHint:"Khi kết nối với Telegram, WhatsApp hoặc bot / kênh khác, thông tin liên hệ của khách sẽ được chuyển tự động vào hệ thống — không cần nhập số điện thoại thủ công.",selectPayment:"Chọn phương thức",qr:"QR và biên nhận",pay:"Thanh toán đặt cọc",showQr:"Hiện QR",confirmPayment:"Xác nhận thanh toán",receipt:"Đã nhận đặt cọc. Yêu cầu đã gửi cho quản lý xác nhận.",created:"Đã tạo đặt bàn",toMe:"Đi tới Đặt bàn",chooseMethod:"Vui lòng chọn phương thức thanh toán trước.",checkout:"Thanh toán",checkoutSummary:"Thông tin đặt bàn",paymentConsent:"Tôi hiểu đây là yêu cầu đặt bàn: bàn và điều kiện sẽ được quản lý xác nhận.",awaitingManager:"Chờ quản lý xác nhận",sourceContact:"Liên hệ lấy từ nguồn mini app",recommended:"Gợi ý",toBooking:"Đi tới đặt bàn",viewQ:"Muốn view đẹp",shishaQ:"Cần shisha",groupQ:"Đi nhóm",sunsetQ:"Chỗ ngắm hoàng hôn?"}
+ru:{sub:"Bar Nha Trang",admin:"Админ",heroText:"Вечерний rooftop-бар с кальяном, коктейлями, видом на город и позициями для разного настроения.",bookNow:"Забронировать",askAi:"Спросить AI",manager:"Связаться с менеджером",call:"Позвонить",openMaps:"Открыть в Google Maps",zonesTitle:"Позиции",zonesText:"Выберите атмосферу вечера.",bookTitle:"Забронировать",aiTitle:"AI-консультант",aiText:"Напишите любой вопрос или выберите быстрый вариант.",yourQuestion:"Ваш вопрос",aiPh:"Напишите сообщение…",ask:"Спросить",mineTitle:"Брони",mineText:"Ваши брони, выбранная позиция и статус оплаты.",adminTitle:"Админ",adminText:"Заявки, столы, депозиты, каналы и настройки будущей CRM/POS.",requests:"Заявки",paid:"Оплачено",tables:"Столы",channels:"Каналы",today:"Сегодня",settings:"Настройки",navHome:"Главная",navZones:"Позиции",navBook:"Забронировать",navAi:"AI",navMine:"Брони",details:"Детали",position:"Позиция",table:"Стол",guest:"Данные",payment:"Оплата",next:"Далее",date:"Дата",time:"Время",guests:"Гостей",name:"Имя",phone:"Телефон",comment:"Комментарий",cancel:"Отменить",empty:"Пока нет заявок",view:"View",pickPosition:"Выбрать позицию",required:"Укажите имя и контакт.",contactFromApp:"Контакт клиента",contactReceivedFrom:"Получен автоматически из",contactFallback:"Контакт не удалось получить автоматически — укажите номер телефона.",directWeb:"Прямой вход",otherChannel:"Другой канал",contactHint:"При подключении к Telegram, WhatsApp или другому боту / каналу контакт клиента передаётся в систему автоматически.",selectPayment:"Выберите способ оплаты",qr:"QR и чек",pay:"Оплатить депозит",showQr:"Показать QR",confirmPayment:"Подтвердить оплату",receipt:"Депозит принят. Заявка отправлена менеджеру на подтверждение.",created:"Бронь создана",toMe:"Перейти в Брони",chooseMethod:"Сначала выберите способ оплаты.",checkout:"Оплата",checkoutSummary:"Данные брони",paymentConsent:"Я понимаю, что это заявка на бронь: стол и условия подтверждаются менеджером.",awaitingManager:"Ожидает подтверждения менеджером",sourceContact:"Контакт получен из источника mini app",recommended:"Рекомендую",toBooking:"Перейти к бронированию",viewQ:"Хочу красивый вид",shishaQ:"Нужен кальян",groupQ:"Мы компанией",sunsetQ:"Где лучше на закат?"},
+en:{sub:"Bar Nha Trang",admin:"Admin",heroText:"Evening rooftop bar with shisha, cocktails, city view and positions for different moods.",bookNow:"Reserve",askAi:"Ask AI",manager:"Contact manager",call:"Call",openMaps:"Open in Google Maps",zonesTitle:"Positions",zonesText:"Choose your evening atmosphere.",bookTitle:"Reserve",aiTitle:"AI consultant",aiText:"Ask any question or choose a quick prompt.",yourQuestion:"Your question",aiPh:"Type a message…",ask:"Ask",mineTitle:"Me",mineText:"Your requests, selected position and payment status.",adminTitle:"Admin",adminText:"Requests, tables, deposits, channels and future CRM/POS settings.",requests:"Requests",paid:"Paid",tables:"Tables",channels:"Channels",today:"Today",settings:"Settings",navHome:"Home",navZones:"Positions",navBook:"Reserve",navAi:"AI",navMine:"Me",details:"Details",position:"Position",table:"Table",guest:"Details",payment:"Payment",next:"Next",date:"Date",time:"Time",guests:"Guests",name:"Name",phone:"Phone",comment:"Comment",cancel:"Cancel",empty:"No requests yet",view:"View",pickPosition:"Pick position",required:"Enter your name and contact.",contactFromApp:"Customer contact",contactReceivedFrom:"Received automatically from",contactFallback:"We could not get the contact automatically — enter a phone number.",directWeb:"Direct web",otherChannel:"Other channel",contactHint:"When connected to Telegram, WhatsApp or another bot / channel, the customer contact is passed to the system automatically.",selectPayment:"Choose payment method",qr:"QR and receipt",pay:"Pay deposit",showQr:"Show QR",confirmPayment:"Confirm payment",receipt:"Deposit accepted. Request sent to manager for confirmation.",created:"Reservation created",toMe:"Go to Bookings",chooseMethod:"Choose a payment method first.",checkout:"Payment",checkoutSummary:"Reservation details",paymentConsent:"I understand this is a booking request: table and terms are confirmed by a manager.",awaitingManager:"Awaiting manager confirmation",sourceContact:"Contact pulled from mini app source",recommended:"I recommend",toBooking:"Go to reservation",viewQ:"I want a great view",shishaQ:"Need shisha",groupQ:"We are a group",sunsetQ:"Best sunset seats?"},
+vi:{sub:"Bar Nha Trang",admin:"Admin",heroText:"Rooftop bar buổi tối với shisha, cocktail, view thành phố và nhiều vị trí theo cảm xúc.",bookNow:"Đặt bàn",askAi:"Hỏi AI",manager:"Liên hệ quản lý",call:"Gọi",openMaps:"Mở Google Maps",zonesTitle:"Vị trí",zonesText:"Chọn không khí buổi tối.",bookTitle:"Đặt bàn",aiTitle:"Tư vấn AI",aiText:"Nhập câu hỏi bất kỳ hoặc chọn gợi ý nhanh.",yourQuestion:"Câu hỏi của bạn",aiPh:"Nhập tin nhắn…",ask:"Hỏi",mineTitle:"Tôi",mineText:"Yêu cầu, vị trí đã chọn và trạng thái thanh toán.",adminTitle:"Admin",adminText:"Yêu cầu, bàn, đặt cọc, kênh và cài đặt CRM/POS.",requests:"Yêu cầu",paid:"Đã trả",tables:"Bàn",channels:"Kênh",today:"Hôm nay",settings:"Cài đặt",navHome:"Home",navZones:"Vị trí",navBook:"Đặt bàn",navAi:"AI",navMine:"Tôi",details:"Chi tiết",position:"Vị trí",table:"Bàn",guest:"Thông tin",payment:"Thanh toán",next:"Tiếp",date:"Ngày",time:"Giờ",guests:"Khách",name:"Tên",phone:"Điện thoại",comment:"Ghi chú",cancel:"Hủy",empty:"Chưa có yêu cầu",view:"View",pickPosition:"Chọn vị trí",required:"Nhập tên và thông tin liên hệ.",contactFromApp:"Liên hệ khách hàng",contactReceivedFrom:"Được nhận tự động từ",contactFallback:"Không thể lấy liên hệ tự động — vui lòng nhập số điện thoại.",directWeb:"Truy cập trực tiếp",otherChannel:"Kênh khác",contactHint:"Khi kết nối với Telegram, WhatsApp hoặc bot / kênh khác, thông tin liên hệ khách được chuyển tự động vào hệ thống.",selectPayment:"Chọn phương thức",qr:"QR và biên nhận",pay:"Thanh toán đặt cọc",showQr:"Hiện QR",confirmPayment:"Xác nhận thanh toán",receipt:"Đã nhận đặt cọc. Yêu cầu đã gửi cho quản lý xác nhận.",created:"Đã tạo đặt bàn",toMe:"Đi tới Đặt bàn",chooseMethod:"Vui lòng chọn phương thức thanh toán trước.",checkout:"Thanh toán",checkoutSummary:"Thông tin đặt bàn",paymentConsent:"Tôi hiểu đây là yêu cầu đặt bàn: bàn và điều kiện sẽ được quản lý xác nhận.",awaitingManager:"Chờ quản lý xác nhận",sourceContact:"Liên hệ lấy từ nguồn mini app",recommended:"Gợi ý",toBooking:"Đi tới đặt bàn",viewQ:"Muốn view đẹp",shishaQ:"Cần shisha",groupQ:"Đi nhóm",sunsetQ:"Chỗ ngắm hoàng hôn?"}
 };
 Object.assign(TT.ru,{
 adminText:"Демо того, как заявки из приложения будут выглядеть внутри любой CRM.",
@@ -323,8 +324,29 @@ function renderZones(){
   $$('[data-pick]').forEach(b=>b.onclick=()=>{state.zone=b.dataset.pick;step=1;maxStep=Math.max(maxStep,1);go('book');renderBook();});
 }
 function nextTo(n){ maxStep=Math.max(maxStep,n); step=n; state.err=''; renderBook(); }
-function phoneOk(){return !!state.phone && state.phone.length>5;}
-function canPay(){return state.name.trim().length>1 && phoneOk();}
+function contactOk(){return Boolean((state.phone||'').trim()||state.sourceUserId||state.sourceUsername);}
+function canPay(){return state.name.trim().length>1 && contactOk();}
+function contactSourceLabel(source=state.contactSource){
+  const key=String(source||'web').toLowerCase();
+  if(key==='telegram')return 'Telegram';
+  if(key==='whatsapp')return 'WhatsApp';
+  if(key==='instagram')return 'Instagram';
+  if(key==='messenger')return 'Messenger';
+  if(key==='web')return t('directWeb');
+  return String(source||t('otherChannel'));
+}
+function contactDisplay(){
+  if((state.phone||'').trim())return state.phone.trim();
+  if(state.sourceUsername)return '@'+String(state.sourceUsername).replace(/^@/,'');
+  if(state.sourceUserId)return contactSourceLabel();
+  return '';
+}
+function bookingContactDisplay(b){
+  if((b.phone||'').trim())return b.phone.trim();
+  if(b.sourceUsername)return '@'+String(b.sourceUsername).replace(/^@/,'');
+  if(b.sourceUserId)return contactSourceLabel(b.source);
+  return '—';
+}
 
 const localeCode=()=>({ru:'ru-RU',en:'en-US',vi:'vi-VN'}[lang]||'en-US');
 function dateFromISO(iso){const [y,m,d]=(iso||localISO()).split('-').map(Number);return new Date(y,m-1,d,12,0,0,0);}
@@ -351,6 +373,108 @@ function renderCalendar(){
 }
 const paymentMethods=()=>lang==='ru'?['Сбер','VNPay','Kaspi']:['Sber','VNPay','Kaspi'];
 
+function applyResolvedContact(contact={},verified=false){
+  const source=String(contact.source||'web').toLowerCase();
+  state.contactSource=source;
+  state.sourceUserId=String(contact.externalId||'').trim();
+  state.sourceUsername=String(contact.username||'').trim();
+  state.sourceLanguage=String(contact.language||'').trim();
+  state.contactAvatar=String(contact.avatar||'').trim();
+  state.contactVerified=Boolean(contact.verified??verified);
+  state.contactResolved=true;
+
+  const incomingName=String(contact.name||'').trim();
+  const incomingPhone=String(contact.phone||'').trim();
+  if(incomingName){
+    state.contactName=incomingName;
+    if(!state.name)state.name=incomingName;
+  }
+  if(incomingPhone)state.phone=incomingPhone;
+
+  renderBook();
+  renderBookings();
+  renderAdmin();
+}
+
+function telegramUnsafeContact(tg){
+  const user=tg?.initDataUnsafe?.user;
+  if(!user)return null;
+  return {
+    source:'telegram',
+    externalId:user.id,
+    name:[user.first_name,user.last_name].filter(Boolean).join(' '),
+    username:user.username||'',
+    language:user.language_code||'',
+    avatar:user.photo_url||''
+  };
+}
+
+async function hydrateContactFromSource(){
+  const params=new URLSearchParams(location.search);
+  const token=params.get('contact_token');
+
+  if(token){
+    try{
+      const response=await fetch('/api/contact/resolve',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({token})
+      });
+      const data=await response.json().catch(()=>({}));
+      if(response.ok&&data.contact){
+        applyResolvedContact(data.contact,true);
+        params.delete('contact_token');
+        const query=params.toString();
+        history.replaceState({},'',location.pathname+(query?'?'+query:'')+location.hash);
+        return;
+      }
+    }catch(err){console.warn('Contact handoff resolve failed',err);}
+  }
+
+  const tg=window.Telegram?.WebApp;
+  if(tg&&tg.initData){
+    try{tg.ready();tg.expand();}catch(_){}
+    try{
+      const response=await fetch('/api/contact/telegram',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({initData:tg.initData})
+      });
+      const data=await response.json().catch(()=>({}));
+      if(response.ok&&data.contact){
+        applyResolvedContact(data.contact,true);
+        return;
+      }
+    }catch(err){console.warn('Telegram verification unavailable',err);}
+
+    const unsafe=telegramUnsafeContact(tg);
+    if(unsafe){
+      applyResolvedContact(unsafe,false);
+      return;
+    }
+  }
+
+  state.contactResolved=true;
+  renderBook();
+}
+
+function contactBlockHtml(){
+  if(contactOk()){
+    const source=contactSourceLabel();
+    return `<div class="card" style="margin:12px 0 0;padding:12px;border-radius:18px">
+      <label>${t('contactFromApp')}</label>
+      <h3 style="margin:0">${escapeHtml(contactDisplay())}</h3>
+      <p style="margin-top:5px">${t('contactReceivedFrom')} ${escapeHtml(source)}.</p>
+      <p style="margin-top:5px">${t('contactHint')}</p>
+    </div>`;
+  }
+  return `<div style="margin-top:12px">
+    <label>${t('phone')}</label>
+    <input id="bPhone" value="${escapeHtml(state.phone)}" inputmode="tel" placeholder="+84…" oninput="state.phone=this.value;state.err='';updateGuestError()">
+    <p style="margin-top:6px">${t('contactFallback')}</p>
+  </div>`;
+}
+
 function renderBook(){
   const names=['details','position','table','guest','payment'];
   $('#stepTabs').innerHTML=names.map((n,i)=>`<button class="${i===step?'on':''}" ${i>maxStep?'disabled':''} data-step="${i}">${i+1}. ${t(n)}</button>`).join('');
@@ -359,10 +483,10 @@ function renderBook(){
   if(step===0) html=`<div class="grid2"><div><label>${t('date')}</label><button type="button" class="datePickerBtn" onclick="toggleCalendar()"><span>${formatDateLabel()}</span><svg><use href="#i-calendar"/></svg></button>${state.calOpen?renderCalendar():''}</div><div><label>${t('time')}</label><input id="bTime" type="time" value="${state.time}" oninput="state.time=this.value"></div></div><div style="margin-top:12px"><label>${t('guests')}</label><input id="bGuests" type="number" min="1" max="12" value="${state.guests}" oninput="state.guests=this.value"></div><button class="btn full" style="margin-top:14px" onclick="nextTo(1)">${t('next')}</button>`;
   if(step===1) html=`<div class="choice">${ZONES.map(x=>`<button class="zoneChoice ${state.zone===x.id?'on':''}" onclick="state.zone='${x.id}';renderBook()"><img src="${x.img}"><div><h3>${x.name}</h3><p>${zt(x,'desc')}</p></div></button>`).join('')}</div><button class="btn full" style="margin-top:14px" onclick="nextTo(2)">${t('next')}</button>`;
   if(step===2) html=`<div class="card" style="padding:12px;border-radius:20px;display:flex;align-items:center;justify-content:space-between;gap:10px"><div><label>${t('position')}</label><h3>${z().name}</h3><p>${zt(z(),'desc')}</p></div><button class="btn secondary" onclick="openZone(state.zone)">${t('view')}</button></div><div class="tableMap">${['T1','T2','T3','T4'].map((tb,i)=>`<button class="table ${state.table===tb?'on':''} ${i===2?'busy':''}" style="left:${[14,50,72,28][i]}%;top:${[28,25,46,63][i]}%" onclick="${i===2?'':'state.table=\''+tb+'\';renderBook()'}"><b>${tb}</b><span>${[2,4,4,6][i]}p</span></button>`).join('')}</div><button class="btn full" style="margin-top:14px" onclick="nextTo(3)">${t('next')}</button>`;
-  if(step===3) html=`<div><label>${t('name')}</label><input id="bName" value="${state.name}" placeholder="Anna" oninput="state.name=this.value;state.err='';updateGuestError()"></div><div class="card" style="margin:12px 0 0;padding:12px;border-radius:18px"><label>${t('contactFromApp')}</label><h3 style="margin:0">${state.phone}</h3><p style="margin-top:6px">${t('contactHint')}</p></div><div style="margin-top:12px"><label>${t('comment')}</label><textarea id="bNote" oninput="state.note=this.value">${state.note}</textarea></div><div id="guestErr" class="${state.err?'error':'hidden'}">${state.err}</div><button class="btn full" style="margin-top:14px" onclick="if(canPay()){nextTo(4)}else{state.err=t('required');renderBook();}">${t('next')}</button>`;
+  if(step===3) html=`<div><label>${t('name')}</label><input id="bName" value="${escapeHtml(state.name)}" placeholder="Anna" oninput="state.name=this.value;state.err='';updateGuestError()"></div>${contactBlockHtml()}<div style="margin-top:12px"><label>${t('comment')}</label><textarea id="bNote" oninput="state.note=this.value">${escapeHtml(state.note)}</textarea></div><div id="guestErr" class="${state.err?'error':'hidden'}">${state.err}</div><button class="btn full" style="margin-top:14px" onclick="if(canPay()){nextTo(4)}else{state.err=t('required');renderBook();}">${t('next')}</button>`;
   if(step===4) html=`<div class="payShell">
   <div class="checkoutSteps"><span class="${state.payStage==='choose'?'on':''}">1 · ${t('selectPayment')}</span><span class="${state.payStage==='qr'?'on':''}">2 · ${t('qr')}</span><span class="${state.payStage==='receipt'?'on':''}">3 · ${t('created')}</span></div>
-  <div class="payTop"><img src="${z().img}"><div><h3>${z().name} · ${state.table}</h3><p>${state.name} · ${state.phone}</p></div></div>
+  <div class="payTop"><img src="${z().img}"><div><h3>${z().name} · ${state.table}</h3><p>${escapeHtml(state.name)} · ${escapeHtml(contactDisplay())}</p></div></div>
   <div class="checkoutSummary"><div class="line"><span>${t('checkoutSummary')}</span><b>${z().name}</b></div><div class="line"><span>${t('date')}</span><b>${formatDateLabel()}</b></div><div class="line"><span>${t('time')}</span><b>${state.time}</b></div><div class="line"><span>${t('guests')}</span><b>${state.guests||2}</b></div><div class="line"><span>${t('payment')}</span><b>500 000 VND</b></div></div>
   <div class="payMethods">${paymentMethods().map(m=>`<button class="pay ${state.payMethod===m?'on':''}" onclick="state.payMethod='${m}';state.payStage='choose';state.err='';renderBook()"><span>${m}</span><span>${state.payMethod===m?'✓':''}</span></button>`).join('')}</div>
   <label class="consent"><input type="checkbox" id="payConsent" ${state.consent?'checked':''} onchange="state.consent=this.checked;state.err='';renderBook()"><span>${t('paymentConsent')}</span></label>
@@ -386,7 +510,7 @@ function paymentNext(){
   }
   if(state.payStage==='receipt'){resetBookingFlow();renderBookings();renderAdmin();go('mine');}
 }
-function resetBookingFlow(){step=0;maxStep=0;state.zone='roof';state.table='T1';state.name='';state.phone='+84 825 190 251';state.note='';state.guests=2;state.date=localISO();state.time='19:30';state.calOpen=false;state.payMethod='';state.payStage='choose';state.consent=false;state.err='';renderBook();}
+function resetBookingFlow(){step=0;maxStep=0;state.zone='roof';state.table='T1';state.name=state.contactName||state.name||'';state.note='';state.guests=2;state.date=localISO();state.time='19:30';state.calOpen=false;state.payMethod='';state.payStage='choose';state.consent=false;state.err='';renderBook();}
 const DEMO_BOOKINGS=[
 {id:'demo-1001',demo:true,zone:'sunset',zoneName:'Sunset Line',img:'assets/scene-3.webp',table:'T2',paid:true,status:'confirmed',payMethod:'VNPay',name:'Anna Petrova',phone:'+84 90 123 45 67',guests:4,date:localISO(),time:'18:30',note:'Sunset view, birthday',source:'Telegram Mini App',sourceUserId:'@anna_travel',customerLang:'ru',crmContactId:'CRM-20481',firstContact:'2026-09-20',lastContact:localISO(),historyCount:3},
 {id:'demo-1002',demo:true,zone:'vip',zoneName:'Group / VIP',img:'assets/scene-6.webp',table:'T4',paid:false,status:'new',payMethod:'—',name:'Minh Anh',phone:'+84 91 555 20 20',guests:6,date:localISO(new Date(Date.now()+86400000)),time:'20:00',note:'Group booking',source:'WhatsApp',sourceUserId:'+84 91 555 20 20',customerLang:'vi',crmContactId:'CRM-20482',firstContact:localISO(),lastContact:localISO(),historyCount:1}
@@ -405,10 +529,10 @@ function focusClientBooking(id){
   const b=state.bookings.find(x=>String(x.id)===String(id));
   if(b){go('mine');renderBookings();}
 }
-function addBooking(){if(state._booked)return;state._booked=true;state.bookings.unshift({id:Date.now(),zone:state.zone,zoneName:z().name,img:z().img,table:state.table,paid:true,status:'manager_confirmation',payMethod:state.payMethod,name:state.name,phone:state.phone,guests:state.guests||2,date:state.date,time:state.time,note:state.note,source:'Mini App',deposit:'500 000 VND',sourceUserId:state.phone||'',customerLang:lang,crmContactId:'CRM-'+String(Date.now()).slice(-6),firstContact:localISO(),lastContact:localISO(),historyCount:1});setTimeout(()=>state._booked=false,500);}
+function addBooking(){if(state._booked)return;state._booked=true;state.bookings.unshift({id:Date.now(),zone:state.zone,zoneName:z().name,img:z().img,table:state.table,paid:true,status:'manager_confirmation',payMethod:state.payMethod,name:state.name,phone:state.phone,guests:state.guests||2,date:state.date,time:state.time,note:state.note,source:contactSourceLabel(),sourceUserId:state.sourceUserId||state.phone||'',sourceUsername:state.sourceUsername||'',sourceVerified:state.contactVerified,customerLang:state.sourceLanguage||lang,crmContactId:'CRM-'+String(Date.now()).slice(-6),firstContact:localISO(),lastContact:localISO(),historyCount:1});setTimeout(()=>state._booked=false,500);}
 function renderBookings(){
   let list=$('#bookingList'); if(!list)return;
-  list.innerHTML=(state.bookings.length?state.bookings.map(b=>`<div class="bookingCard"><img src="${b.img}"><div><h3>${b.zoneName} · ${b.table}</h3><p>${formatDateLabel(b.date)} · ${b.time}</p><p>${b.name} · ${b.phone} · ${b.guests} ${t('guests')}</p><span class="tag">${b.payMethod} · ${statusLabel(b.status)}</span></div>${!['cancelled','completed'].includes(b.status)?`<div class="actions"><button class="btn bad" onclick="cancelBooking('${b.id}')">${t('cancel')}</button></div>`:''}</div>`).join(''):`<div class="card"><p>${t('empty')}</p></div>`)+`<button class="btn full" style="margin-top:4px" onclick="startNewBooking()">${t('bookNow')}</button>`;
+  list.innerHTML=(state.bookings.length?state.bookings.map(b=>`<div class="bookingCard"><img src="${b.img}"><div><h3>${b.zoneName} · ${b.table}</h3><p>${formatDateLabel(b.date)} · ${b.time}</p><p>${escapeHtml(b.name)} · ${escapeHtml(bookingContactDisplay(b))} · ${b.guests} ${t('guests')}</p><span class="tag">${b.payMethod} · ${statusLabel(b.status)}</span></div>${!['cancelled','completed'].includes(b.status)?`<div class="actions"><button class="btn bad" onclick="cancelBooking('${b.id}')">${t('cancel')}</button></div>`:''}</div>`).join(''):`<div class="card"><p>${t('empty')}</p></div>`)+`<button class="btn full" style="margin-top:4px" onclick="startNewBooking()">${t('bookNow')}</button>`;
 }
 function startNewBooking(){resetBookingFlow();state._booked=false;go('book');}
 let pendingCancelId=null;
@@ -603,6 +727,6 @@ aiInput.addEventListener('keydown',e=>{
     aiRespond();
   }
 });
-renderZones();renderQuick();renderBook();renderBookings();renderAdmin();i18n();
+renderZones();renderQuick();renderBook();renderBookings();renderAdmin();i18n();hydrateContactFromSource();
 </script>
 </body></html>
