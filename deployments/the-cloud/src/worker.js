@@ -73,9 +73,178 @@ function extractActions(rawReply, question) {
   };
 }
 
+
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
+
+function toBase64Url(bytes) {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function fromBase64Url(value) {
+  const padded = value.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - value.length % 4) % 4);
+  const binary = atob(padded);
+  return Uint8Array.from(binary, ch => ch.charCodeAt(0));
+}
+
+async function importHmacKey(secret) {
+  return crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign", "verify"]
+  );
+}
+
+async function createContactToken(secret, payload) {
+  const body = toBase64Url(encoder.encode(JSON.stringify(payload)));
+  const key = await importHmacKey(secret);
+  const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(body));
+  return body + "." + toBase64Url(new Uint8Array(signature));
+}
+
+async function verifyContactToken(secret, token) {
+  const [body, signature] = String(token || "").split(".");
+  if (!body || !signature) throw new Error("Invalid token");
+  const key = await importHmacKey(secret);
+  const valid = await crypto.subtle.verify(
+    "HMAC",
+    key,
+    fromBase64Url(signature),
+    encoder.encode(body)
+  );
+  if (!valid) throw new Error("Invalid signature");
+  const payload = JSON.parse(decoder.decode(fromBase64Url(body)));
+  if (!payload.exp || payload.exp < Math.floor(Date.now() / 1000)) throw new Error("Expired token");
+  return payload;
+}
+
+function cleanContactPayload(input = {}) {
+  const clean = (value, max = 160) => String(value || "").trim().slice(0, max);
+  return {
+    source: clean(input.source || "other", 40),
+    externalId: clean(input.externalId, 160),
+    phone: clean(input.phone, 64),
+    name: clean(input.name, 160),
+    username: clean(input.username, 160),
+    language: clean(input.language, 16),
+    avatar: clean(input.avatar, 500)
+  };
+}
+
+async function validateTelegramInitData(initData, botToken) {
+  const params = new URLSearchParams(String(initData || ""));
+  const receivedHash = params.get("hash");
+  if (!receivedHash) throw new Error("Missing Telegram hash");
+  params.delete("hash");
+
+  const authDate = Number(params.get("auth_date") || 0);
+  if (!authDate || Math.abs(Math.floor(Date.now() / 1000) - authDate) > 86400) {
+    throw new Error("Expired Telegram init data");
+  }
+
+  const dataCheckString = [...params.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, value]) => key + "=" + value)
+    .join("\n");
+
+  const secretKeyMaterial = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode("WebAppData"),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const secretKey = await crypto.subtle.sign("HMAC", secretKeyMaterial, encoder.encode(botToken));
+  const validationKey = await crypto.subtle.importKey(
+    "raw",
+    secretKey,
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const hashBuffer = await crypto.subtle.sign("HMAC", validationKey, encoder.encode(dataCheckString));
+  const calculatedHash = [...new Uint8Array(hashBuffer)].map(b => b.toString(16).padStart(2, "0")).join("");
+  if (calculatedHash !== receivedHash.toLowerCase()) throw new Error("Invalid Telegram init data");
+
+  const rawUser = params.get("user");
+  const user = rawUser ? JSON.parse(rawUser) : {};
+  return cleanContactPayload({
+    source: "telegram",
+    externalId: user.id,
+    name: [user.first_name, user.last_name].filter(Boolean).join(" "),
+    username: user.username,
+    language: user.language_code,
+    avatar: user.photo_url
+  });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+
+    if (url.pathname === "/api/contact/health") {
+      return Response.json({
+        ok: true,
+        signedHandoff: Boolean(env.CONTACT_HANDOFF_SECRET),
+        telegramVerification: Boolean(env.TELEGRAM_BOT_TOKEN)
+      });
+    }
+
+    if (url.pathname === "/api/contact/resolve") {
+      if (request.method !== "POST") return Response.json({ error: "Method not allowed" }, { status: 405 });
+      if (!env.CONTACT_HANDOFF_SECRET) return Response.json({ error: "Contact handoff is not configured" }, { status: 503 });
+      try {
+        const body = await request.json();
+        const contact = await verifyContactToken(env.CONTACT_HANDOFF_SECRET, body?.token);
+        return Response.json({ contact: { ...contact, verified: true } });
+      } catch (error) {
+        return Response.json({ error: "Invalid or expired contact handoff" }, { status: 401 });
+      }
+    }
+
+    if (url.pathname === "/api/contact/handoff") {
+      if (request.method !== "POST") return Response.json({ error: "Method not allowed" }, { status: 405 });
+      if (!env.CONTACT_HANDOFF_SECRET) return Response.json({ error: "Contact handoff is not configured" }, { status: 503 });
+
+      const auth = request.headers.get("Authorization") || "";
+      if (auth !== "Bearer " + env.CONTACT_HANDOFF_SECRET) {
+        return Response.json({ error: "Unauthorized" }, { status: 401 });
+      }
+
+      const body = await request.json();
+      const contact = cleanContactPayload(body);
+      if (!contact.externalId && !contact.phone) {
+        return Response.json({ error: "externalId or phone is required" }, { status: 400 });
+      }
+
+      const payload = {
+        ...contact,
+        iat: Math.floor(Date.now() / 1000),
+        exp: Math.floor(Date.now() / 1000) + 900
+      };
+      const token = await createContactToken(env.CONTACT_HANDOFF_SECRET, payload);
+      return Response.json({
+        token,
+        launchUrl: url.origin + "/?contact_token=" + encodeURIComponent(token),
+        expiresIn: 900
+      });
+    }
+
+    if (url.pathname === "/api/contact/telegram") {
+      if (request.method !== "POST") return Response.json({ error: "Method not allowed" }, { status: 405 });
+      if (!env.TELEGRAM_BOT_TOKEN) return Response.json({ error: "Telegram verification is not configured" }, { status: 503 });
+      try {
+        const body = await request.json();
+        const contact = await validateTelegramInitData(body?.initData, env.TELEGRAM_BOT_TOKEN);
+        return Response.json({ contact: { ...contact, verified: true } });
+      } catch (error) {
+        return Response.json({ error: "Invalid Telegram session" }, { status: 401 });
+      }
+    }
 
     if (url.pathname === "/api/ai/health") {
       return Response.json({ ok: true, ai: Boolean(env.AI) });
