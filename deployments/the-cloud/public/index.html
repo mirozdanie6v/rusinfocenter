@@ -8,13 +8,21 @@
 :root{--bg:#05060a;--panel:#12151e;--line:rgba(255,255,255,.12);--text:#fff7ec;--muted:#bdb5ab;--gold:#f4bf5f;--gold2:#ffdc99;--ok:#79e4aa;--bad:#ff8383;--safe:env(safe-area-inset-bottom,0px);font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif}
 *{box-sizing:border-box}html,body{margin:0;height:100%;background:#05060a;color:var(--text)}body{display:grid;place-items:center;overflow:hidden}button,input,textarea,select{font:inherit}button{cursor:pointer;min-height:44px}.app{width:min(430px,100vw);height:min(932px,100dvh);background:radial-gradient(420px 260px at 82% -8%,rgba(244,191,95,.17),transparent 60%),linear-gradient(#090b10,#05060a);position:relative;overflow:hidden;box-shadow:0 20px 70px rgba(0,0,0,.55)}.top{height:72px;display:flex;align-items:center;justify-content:space-between;padding:13px 14px;border-bottom:1px solid var(--line);background:rgba(8,9,13,.9);backdrop-filter:blur(16px)}.brand{display:flex;gap:10px;align-items:center;min-width:0}.logo{width:44px;height:44px;border-radius:16px;display:grid;place-items:center;background:linear-gradient(135deg,#151d2b,#302113);border:1px solid rgba(255,255,255,.1)}.brand b{display:block;font-size:15px}.brand span{display:block;color:var(--muted);font-size:11px;white-space:nowrap}.topActions{display:flex;gap:7px;align-items:center}.adminBtn{border:1px solid var(--line);background:rgba(255,255,255,.06);color:#fff;border-radius:16px;padding:0 12px;font-weight:850}.lang{display:flex;gap:3px;border:1px solid var(--line);background:rgba(255,255,255,.05);padding:3px;border-radius:16px}.lang button{border:0;background:transparent;color:var(--muted);border-radius:13px;min-width:30px;height:30px;font-size:11px;font-weight:900}.lang button.on{background:var(--gold);color:#1e1204}.stage{position:absolute;inset:72px 0 calc(80px + var(--safe)) 0;overflow:hidden}.screen{display:none;height:100%;overflow:auto;padding:14px 14px 22px}.screen.on{display:block}.card{border:1px solid var(--line);border-radius:28px;background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.035));padding:14px;margin-bottom:14px}.hero{position:relative;min-height:345px;border-radius:32px;overflow:hidden;padding:18px;display:flex;flex-direction:column;justify-content:flex-end;background-image:linear-gradient(90deg,rgba(4,5,8,.82) 0%,rgba(4,5,8,.72) 38%,rgba(4,5,8,.38) 70%,rgba(4,5,8,.14)),url('assets/scene-1.webp');background-size:cover;background-position:center}.hero h1{font-size:40px;line-height:.92;letter-spacing:-.05em;margin:0 0 12px;max-width:70%}.hero p{margin:0;color:#f0e6d9;font-size:14px;line-height:1.45;max-width:72%}.row{display:flex;gap:10px;flex-wrap:wrap}.btn{border:0;border-radius:17px;min-height:49px;padding:0 16px;font-weight:950;background:linear-gradient(180deg,#ffda88,#f0b446);color:#241506;box-shadow:0 12px 28px rgba(244,191,95,.18)}.btn.secondary{background:rgba(255,255,255,.08);color:#fff;border:1px solid var(--line);box-shadow:none}.btn.bad{background:rgba(255,131,131,.13);color:#ffd8d8;border:1px solid rgba(255,131,131,.3);box-shadow:none}.btn.full{width:100%}.btn[disabled]{opacity:.45;cursor:not-allowed}h2{font-size:28px;line-height:1;margin:0 0 9px;letter-spacing:-.04em}h3{margin:0;font-size:17px}p{margin:0;color:var(--muted);line-height:1.45;font-size:14px}.contacts{display:grid;grid-template-columns:1fr 1fr;gap:10px}.contact{border:1px solid var(--line);background:rgba(255,255,255,.055);color:#fff;border-radius:20px;min-height:58px;display:flex;align-items:center;justify-content:center;gap:9px;text-decoration:none;font-weight:900;text-align:center;padding:0 10px}.contact .ico{font-size:20px}.map{border:1px solid var(--line);border-radius:24px;min-height:106px;margin-top:12px;padding:14px;display:flex;justify-content:space-between;gap:12px;align-items:center;background:radial-gradient(160px 120px at 20% 25%,rgba(104,148,255,.18),transparent 65%),radial-gradient(160px 120px at 80% 80%,rgba(244,191,95,.14),transparent 65%),rgba(255,255,255,.035)}.map a{color:var(--gold2);font-weight:950;text-decoration:none}.zoneGrid{display:grid;gap:14px}.zone{border:1px solid var(--line);border-radius:28px;overflow:hidden;background:rgba(255,255,255,.04)}.zoneImg{height:192px;position:relative;overflow:hidden;cursor:pointer}.zoneImg img{width:100%;height:100%;object-fit:cover;display:block}.zoneImg:after{content:"";position:absolute;left:0;right:0;bottom:0;height:76px;background:linear-gradient(transparent,rgba(0,0,0,.62))}.zoom{position:absolute;right:12px;bottom:12px;z-index:2;border:1px solid rgba(255,255,255,.18);background:rgba(5,6,10,.72);border-radius:999px;padding:8px 10px;font-size:12px;font-weight:900}.zoneBody{padding:14px}.tag{display:inline-flex;border-radius:999px;padding:6px 9px;background:rgba(121,228,170,.12);border:1px solid rgba(121,228,170,.25);color:#c2f3d7;font-size:12px;font-weight:900;margin-top:8px}.zoneBody h4{margin:10px 0 7px;color:var(--gold2);font-size:15px}.tabs{display:flex;gap:8px;overflow:auto;margin:8px 0 14px;padding-bottom:2px}.tabs button{border:1px solid var(--line);background:rgba(255,255,255,.05);color:#fff;border-radius:999px;padding:0 13px;font-weight:900;white-space:nowrap}.tabs button.on{background:rgba(244,191,95,.18);border-color:rgba(244,191,95,.65);color:var(--gold2)}label{display:block;color:var(--muted);font-size:12px;font-weight:900;margin-bottom:7px}input,textarea,select{width:100%;min-height:50px;border:1px solid var(--line);border-radius:16px;background:rgba(255,255,255,.055);color:#fff;padding:0 13px;font-size:16px;outline:none}textarea{min-height:88px;padding:13px;resize:vertical}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}.choice{display:grid;gap:10px}.zoneChoice{display:flex;gap:10px;text-align:left;border:1px solid var(--line);background:rgba(255,255,255,.045);color:#fff;border-radius:22px;padding:9px}.zoneChoice.on{border-color:rgba(244,191,95,.85);background:rgba(244,191,95,.12)}.zoneChoice img{width:92px;height:82px;object-fit:cover;border-radius:16px;flex:none}.viewBtn{position:absolute;top:13px;left:13px;z-index:2;border:1px solid rgba(244,191,95,.5);background:rgba(6,7,11,.72);color:var(--gold2);border-radius:999px;padding:0 13px;font-weight:950;min-height:38px}.tableMap{height:265px;position:relative;border:1px solid var(--line);border-radius:24px;background:rgba(255,255,255,.035);overflow:hidden;margin-top:12px}.tableMap:before{content:"";position:absolute;left:12px;right:12px;top:12px;height:36px;border:1px dashed rgba(244,191,95,.38);border-radius:999px}.table{position:absolute;width:58px;height:56px;border-radius:18px;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.075);color:#fff;display:flex;flex-direction:column;justify-content:center;align-items:center;font-weight:950}.table span{font-size:10px;color:var(--muted)}.table.on{border-color:var(--gold);background:rgba(244,191,95,.2)}.table.busy{opacity:.35;filter:grayscale(1)}.payMethods{display:grid;gap:9px}.pay{border:1px solid var(--line);background:rgba(255,255,255,.05);color:#fff;border-radius:18px;padding:0 14px;min-height:58px;display:flex;align-items:center;justify-content:space-between;font-weight:950}.pay.on{border-color:rgba(244,191,95,.75);background:rgba(244,191,95,.13)}.qr{width:156px;height:156px;border-radius:18px;margin:12px auto;background:repeating-linear-gradient(45deg,#111 0 7px,#fff 7px 12px);border:12px solid #fff}.success{text-align:center;padding:22px 10px}.success .big{font-size:54px;margin-bottom:10px}.bookingCard{display:grid;grid-template-columns:92px 1fr;gap:12px;border:1px solid var(--line);background:rgba(255,255,255,.04);border-radius:22px;padding:10px;margin-bottom:12px}.bookingCard img{width:92px;height:92px;object-fit:cover;border-radius:18px}.bookingCard .actions{grid-column:1 / -1;display:flex;gap:8px}.error{margin-top:10px;color:#ffd2d2;font-size:13px;background:rgba(255,131,131,.1);border:1px solid rgba(255,131,131,.2);padding:10px;border-radius:14px}.chatbox{display:grid;gap:10px}.bubble{padding:12px 13px;border-radius:18px;max-width:88%;font-size:14px;line-height:1.42}.bubble.bot{background:rgba(244,191,95,.12);border:1px solid rgba(244,191,95,.18)}.bubble.user{background:rgba(101,220,255,.12);border:1px solid rgba(101,220,255,.18);margin-left:auto}.quickQs{display:flex;gap:8px;overflow:auto;padding-bottom:2px;margin-top:10px}.quickQs button{border:1px solid var(--line);background:rgba(255,255,255,.055);color:#fff;border-radius:999px;padding:0 12px;font-weight:850;white-space:nowrap}.adminGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .adminTitleRow{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:12px}.adminTitleRow>div{min-width:0}.adminTitleRow p{margin-top:5px}.adminTitleRow select{width:auto;min-width:132px;min-height:40px;padding:0 10px;border-radius:13px;font-size:12px}
-.crmBooking{border:1px solid var(--line);border-radius:22px;background:rgba(255,255,255,.035);padding:12px;margin-bottom:10px}
-.crmBooking.demo{border-style:dashed}.crmBookingHead{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.crmBookingHead h3{font-size:15px}.crmBookingHead p{font-size:11px;margin-top:3px}.crmBadge{display:inline-flex;align-items:center;border-radius:999px;padding:5px 8px;font-size:10px;font-weight:900;background:rgba(244,191,95,.10);border:1px solid rgba(244,191,95,.25);color:var(--gold2)}
-.crmFields{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:11px 0}.crmField{border:1px solid rgba(255,255,255,.07);border-radius:14px;padding:9px;background:rgba(255,255,255,.025)}.crmField span{display:block;color:var(--muted);font-size:10px;font-weight:850;margin-bottom:3px}.crmField b{font-size:12px;line-height:1.25;display:block;overflow-wrap:anywhere}
-.crmActions{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center}.crmActions select{min-height:42px;border-radius:14px;font-size:12px}.crmActions .btn{min-height:42px;padding:0 12px;font-size:12px}
-.crmMapping{display:grid;gap:7px;margin-top:12px}.crmMapRow{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center;padding:9px 10px;border:1px solid rgba(255,255,255,.07);border-radius:14px;background:rgba(255,255,255,.025);font-size:11px}.crmMapRow span:first-child{color:#fff}.crmMapRow span:last-child{color:var(--gold2);text-align:right}.crmMapRow b{color:var(--muted)}
+.crmBooking{border:1px solid rgba(255,255,255,.085);border-radius:22px;background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.025));padding:13px;margin-bottom:12px;box-shadow:inset 0 1px 0 rgba(255,255,255,.025)}
+.crmBooking.demo{border-style:dashed;border-color:rgba(244,191,95,.24)}
+.crmBookingHead{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding-bottom:10px;border-bottom:1px solid rgba(255,255,255,.07)}
+.crmBookingHead h3{font-size:15px;line-height:1.2}.crmBookingHead p{font-size:11px;margin-top:4px}.crmHeadRight{display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex:none}
+.crmBadge,.crmStatusBadge{display:inline-flex;align-items:center;border-radius:999px;padding:5px 8px;font-size:10px;font-weight:900;white-space:nowrap}
+.crmBadge{background:rgba(244,191,95,.10);border:1px solid rgba(244,191,95,.25);color:var(--gold2)}
+.crmStatusBadge{background:rgba(121,228,170,.09);border:1px solid rgba(121,228,170,.2);color:#c8f3da}
+.crmSection{margin-top:11px}.crmSectionTitle{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:7px}.crmSectionTitle h4{margin:0;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--gold2)}.crmSectionTitle span{font-size:10px;color:var(--muted)}
+.crmFields{display:grid;grid-template-columns:1fr 1fr;gap:7px}.crmField{border:1px solid rgba(255,255,255,.065);border-radius:14px;padding:9px;background:rgba(255,255,255,.022);min-width:0}.crmField.wide{grid-column:1/-1}.crmField span{display:block;color:var(--muted);font-size:10px;font-weight:800;margin-bottom:4px}.crmField b{font-size:12px;line-height:1.3;display:block;overflow-wrap:anywhere;color:#f5f2f6}
+.crmStatusPanel{margin-top:11px;padding-top:11px;border-top:1px solid rgba(255,255,255,.07)}.crmStatusPanel>span{display:block;color:var(--muted);font-size:10px;font-weight:850;margin-bottom:7px}.crmStatusActions{display:flex;gap:6px;flex-wrap:wrap}.crmStatusBtn{min-height:36px;border:1px solid rgba(255,255,255,.09);border-radius:12px;background:rgba(255,255,255,.035);color:#c9c5cd;padding:0 9px;font-size:10.5px;font-weight:850}.crmStatusBtn.on{border-color:rgba(244,191,95,.42);background:rgba(244,191,95,.13);color:var(--gold2)}.crmStatusBtn.cancel{color:#ffbaba}.crmStatusBtn:active{transform:scale(.98)}
+.crmFooter{display:flex;justify-content:flex-end;margin-top:10px}.crmFooter .btn{min-height:38px;padding:0 11px;font-size:11px}
+.adminFilterBar{display:flex;gap:6px;overflow:auto;padding:0 0 11px;margin:0 0 1px;scrollbar-width:none}.adminFilterBar::-webkit-scrollbar{display:none}.adminFilterBtn{border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);color:#aaa5ae;border-radius:999px;min-height:34px;padding:0 10px;white-space:nowrap;font-size:10.5px;font-weight:850}.adminFilterBtn.on{color:var(--gold2);border-color:rgba(244,191,95,.36);background:rgba(244,191,95,.11)}
+.crmMapping{display:grid;gap:7px;margin-top:12px}.crmMapRow{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:8px;align-items:center;padding:9px 10px;border:1px solid rgba(255,255,255,.07);border-radius:14px;background:rgba(255,255,255,.025);font-size:11px}.crmMapRow span:first-child{color:#fff}.crmMapRow span:last-child{color:var(--gold2);text-align:right;overflow-wrap:anywhere}.crmMapRow b{color:var(--muted)}
 .crmFlow{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:12px}.crmFlow span{padding:8px 10px;border:1px solid rgba(255,255,255,.09);border-radius:999px;background:rgba(255,255,255,.035);font-size:11px;font-weight:850}.crmFlow b{color:var(--gold2)}
-@media(max-width:360px){.adminTitleRow{display:block}.adminTitleRow select{margin-top:10px;width:100%}.crmFields{grid-template-columns:1fr}.crmActions{grid-template-columns:1fr}.crmMapRow{grid-template-columns:1fr auto 1fr;font-size:10px}}.metric{border:1px solid var(--line);border-radius:20px;background:rgba(255,255,255,.045);padding:13px}.metric b{font-size:25px;display:block;color:var(--gold2)}.nav{position:absolute;left:0;right:0;bottom:0;height:calc(80px + var(--safe));padding:8px 8px calc(8px + var(--safe));display:grid;grid-template-columns:repeat(5,1fr);gap:6px;background:rgba(6,7,11,.96);border-top:1px solid var(--line);backdrop-filter:blur(14px)}.nav button{border:0;background:transparent;color:#c3bec7;border-radius:17px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:10px;font-weight:850}.nav button.on{background:rgba(244,191,95,.16);color:var(--gold2)}.nav .ico{font-size:18px}.modalBg{position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:50;display:none;align-items:flex-end;justify-content:center}.modalBg.on{display:flex}.modal{width:min(430px,100vw);max-height:92dvh;background:#0b0d13;border-radius:28px 28px 0 0;overflow:auto;border:1px solid rgba(255,255,255,.12)}.modal img{width:100%;max-height:340px;object-fit:cover;display:block}.modalBody{padding:16px}.close{float:right;border:0;background:rgba(255,255,255,.08);color:#fff;width:40px;height:40px;border-radius:999px;font-size:22px}.hidden{display:none!important}
+@media(max-width:380px){.crmFields{grid-template-columns:1fr}.crmField.wide{grid-column:auto}.crmHeadRight{align-items:flex-end}.crmStatusActions{display:grid;grid-template-columns:1fr 1fr}.crmStatusBtn{width:100%}.crmMapRow{font-size:10px}.adminTitleRow{display:block}}.metric{border:1px solid var(--line);border-radius:20px;background:rgba(255,255,255,.045);padding:13px}.metric b{font-size:25px;display:block;color:var(--gold2)}.nav{position:absolute;left:0;right:0;bottom:0;height:calc(80px + var(--safe));padding:8px 8px calc(8px + var(--safe));display:grid;grid-template-columns:repeat(5,1fr);gap:6px;background:rgba(6,7,11,.96);border-top:1px solid var(--line);backdrop-filter:blur(14px)}.nav button{border:0;background:transparent;color:#c3bec7;border-radius:17px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:10px;font-weight:850}.nav button.on{background:rgba(244,191,95,.16);color:var(--gold2)}.nav .ico{font-size:18px}.modalBg{position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:50;display:none;align-items:flex-end;justify-content:center}.modalBg.on{display:flex}.modal{width:min(430px,100vw);max-height:92dvh;background:#0b0d13;border-radius:28px 28px 0 0;overflow:auto;border:1px solid rgba(255,255,255,.12)}.modal img{width:100%;max-height:340px;object-fit:cover;display:block}.modalBody{padding:16px}.close{float:right;border:0;background:rgba(255,255,255,.08);color:#fff;width:40px;height:40px;border-radius:999px;font-size:22px}.hidden{display:none!important}
 .checkoutSteps{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:0 0 12px}
 .checkoutSteps span{border:1px solid var(--line);background:rgba(255,255,255,.045);border-radius:999px;min-height:34px;display:grid;place-items:center;font-size:11px;font-weight:900;color:var(--muted)}
 .checkoutSteps span.on{background:rgba(244,191,95,.15);border-color:rgba(244,191,95,.48);color:var(--gold2)}
@@ -121,7 +129,7 @@
     <div class="metric"><b id="mGuests">0</b><span data-i="guestsToday">Гостей</span></div>
   </div>
   <div class="card">
-    <div class="adminTitleRow"><div><h3 data-i="crmInbox">Входящие брони</h3><p data-i="crmInboxText">То, что менеджер увидит в CRM после заявки клиента.</p></div><select id="adminFilter" onchange="state.adminFilter=this.value;renderAdmin()"></select></div>
+    <div class="adminTitleRow"><div><h3 data-i="crmInbox">Входящие брони</h3><p data-i="crmInboxText">То, что менеджер увидит в CRM после заявки клиента.</p></div></div><div id="adminFilter" class="adminFilterBar"></div>
     <div id="adminList"></div>
   </div>
   <div class="card">
@@ -179,7 +187,8 @@ crmMappingTitle:"Соответствие полей",crmMappingText:"Эти д�
 crmFlowTitle:"Как работает интеграция",crmFlowClient:"Клиент",crmFlowCrm:"CRM / POS",crmFlowBack:"Статус обратно клиенту",
 allStatuses:"Все статусы",status:"Статус",source:"Источник",deposit:"Депозит",customer:"Клиент",bookingId:"ID брони",demoRecord:"Демо",
 status_new:"Новая",status_manager_confirmation:"Ожидает подтверждения",status_confirmed:"Подтверждена",status_arrived:"Гость пришёл",status_completed:"Завершена",status_cancelled:"Отменена",
-openClientView:"Открыть клиентский вид",fieldClient:"Поле клиента",fieldCrm:"Поле CRM",syncNote:"Изменение статуса здесь имитирует ответ CRM и сразу обновляет клиентскую бронь."
+openClientView:"Открыть клиентский вид",fieldClient:"Поле клиента",fieldCrm:"Поле CRM",syncNote:"Изменение статуса здесь имитирует ответ CRM и сразу обновляет клиентскую бронь.",
+clientDataTitle:"Данные клиента",bookingDataTitle:"Бронирование",crmClientId:"CRM Contact ID",sourceUserId:"ID / username источника",interfaceLanguage:"Язык клиента",firstContact:"Первое обращение",lastContact:"Последнее обращение",bookingHistory:"История",oneBooking:"1 бронь",statusActions:"Изменить статус",notAvailable:"Нет данных",paymentStatus:"Статус оплаты",paidYes:"Оплачено",paidNo:"Не оплачено",clientSyncHint:"Эти данные создают/обновляют карточку контакта в CRM."
 });
 Object.assign(TT.en,{
 adminText:"Demo of how bookings from the app would appear inside any CRM.",
@@ -189,7 +198,8 @@ crmMappingTitle:"Field mapping",crmMappingText:"These fields can be sent to amoC
 crmFlowTitle:"Integration flow",crmFlowClient:"Customer",crmFlowCrm:"CRM / POS",crmFlowBack:"Status back to customer",
 allStatuses:"All statuses",status:"Status",source:"Source",deposit:"Deposit",customer:"Customer",bookingId:"Booking ID",demoRecord:"Demo",
 status_new:"New",status_manager_confirmation:"Awaiting confirmation",status_confirmed:"Confirmed",status_arrived:"Guest arrived",status_completed:"Completed",status_cancelled:"Cancelled",
-openClientView:"Open customer view",fieldClient:"Customer field",fieldCrm:"CRM field",syncNote:"Changing the status here simulates a CRM response and immediately updates the customer booking."
+openClientView:"Open customer view",fieldClient:"Customer field",fieldCrm:"CRM field",syncNote:"Changing the status here simulates a CRM response and immediately updates the customer booking.",
+clientDataTitle:"Customer data",bookingDataTitle:"Booking",crmClientId:"CRM Contact ID",sourceUserId:"Source ID / username",interfaceLanguage:"Customer language",firstContact:"First contact",lastContact:"Last contact",bookingHistory:"History",oneBooking:"1 booking",statusActions:"Change status",notAvailable:"Not available",paymentStatus:"Payment status",paidYes:"Paid",paidNo:"Unpaid",clientSyncHint:"These fields create or update the customer contact in the CRM."
 });
 Object.assign(TT.vi,{
 adminText:"Bản demo cách các yêu cầu đặt bàn từ ứng dụng sẽ hiển thị trong bất kỳ CRM nào.",
@@ -199,7 +209,8 @@ crmMappingTitle:"Ánh xạ trường dữ liệu",crmMappingText:"Các trường
 crmFlowTitle:"Luồng tích hợp",crmFlowClient:"Khách hàng",crmFlowCrm:"CRM / POS",crmFlowBack:"Trạng thái trả về khách",
 allStatuses:"Tất cả trạng thái",status:"Trạng thái",source:"Nguồn",deposit:"Đặt cọc",customer:"Khách hàng",bookingId:"Mã đặt bàn",demoRecord:"Demo",
 status_new:"Mới",status_manager_confirmation:"Chờ xác nhận",status_confirmed:"Đã xác nhận",status_arrived:"Khách đã đến",status_completed:"Hoàn tất",status_cancelled:"Đã hủy",
-openClientView:"Mở giao diện khách",fieldClient:"Trường phía khách",fieldCrm:"Trường CRM",syncNote:"Đổi trạng thái tại đây mô phỏng phản hồi từ CRM và cập nhật ngay đặt bàn phía khách."
+openClientView:"Mở giao diện khách",fieldClient:"Trường phía khách",fieldCrm:"Trường CRM",syncNote:"Đổi trạng thái tại đây mô phỏng phản hồi từ CRM và cập nhật ngay đặt bàn phía khách.",
+clientDataTitle:"Dữ liệu khách hàng",bookingDataTitle:"Đặt bàn",crmClientId:"CRM Contact ID",sourceUserId:"ID / username nguồn",interfaceLanguage:"Ngôn ngữ khách",firstContact:"Liên hệ đầu tiên",lastContact:"Liên hệ gần nhất",bookingHistory:"Lịch sử",oneBooking:"1 đặt bàn",statusActions:"Đổi trạng thái",notAvailable:"Chưa có dữ liệu",paymentStatus:"Trạng thái thanh toán",paidYes:"Đã thanh toán",paidNo:"Chưa thanh toán",clientSyncHint:"Các trường này tạo hoặc cập nhật hồ sơ liên hệ khách hàng trong CRM."
 });
 const t=k=>(TT[lang]&&TT[lang][k])||TT.ru[k]||k;
 const z=()=>ZONES.find(x=>x.id===state.zone)||ZONES[0];
@@ -300,8 +311,8 @@ function paymentNext(){
 }
 function resetBookingFlow(){step=0;maxStep=0;state.zone='roof';state.table='T1';state.name='';state.phone='+84 825 190 251';state.note='';state.guests=2;state.date=localISO();state.time='19:30';state.calOpen=false;state.payMethod='';state.payStage='choose';state.consent=false;state.err='';renderBook();}
 const DEMO_BOOKINGS=[
-{id:'demo-1001',demo:true,zone:'sunset',zoneName:'Sunset Line',img:'assets/scene-3.webp',table:'T2',paid:true,status:'confirmed',payMethod:'VNPay',name:'Anna Petrova',phone:'+84 90 123 45 67',guests:4,date:localISO(),time:'18:30',note:'Sunset view, birthday',source:'Telegram Mini App'},
-{id:'demo-1002',demo:true,zone:'vip',zoneName:'Group / VIP',img:'assets/scene-6.webp',table:'T4',paid:false,status:'new',payMethod:'—',name:'Minh Anh',phone:'+84 91 555 20 20',guests:6,date:localISO(new Date(Date.now()+86400000)),time:'20:00',note:'Group booking',source:'WhatsApp'}
+{id:'demo-1001',demo:true,zone:'sunset',zoneName:'Sunset Line',img:'assets/scene-3.webp',table:'T2',paid:true,status:'confirmed',payMethod:'VNPay',name:'Anna Petrova',phone:'+84 90 123 45 67',guests:4,date:localISO(),time:'18:30',note:'Sunset view, birthday',source:'Telegram Mini App',sourceUserId:'@anna_travel',customerLang:'ru',crmContactId:'CRM-20481',firstContact:'2026-09-20',lastContact:localISO(),historyCount:3},
+{id:'demo-1002',demo:true,zone:'vip',zoneName:'Group / VIP',img:'assets/scene-6.webp',table:'T4',paid:false,status:'new',payMethod:'—',name:'Minh Anh',phone:'+84 91 555 20 20',guests:6,date:localISO(new Date(Date.now()+86400000)),time:'20:00',note:'Group booking',source:'WhatsApp',sourceUserId:'+84 91 555 20 20',customerLang:'vi',crmContactId:'CRM-20482',firstContact:localISO(),lastContact:localISO(),historyCount:1}
 ];
 const statusKeys=['new','manager_confirmation','confirmed','arrived','completed','cancelled'];
 const statusLabel=s=>t('status_'+(s||'new'));
@@ -317,7 +328,7 @@ function focusClientBooking(id){
   const b=state.bookings.find(x=>String(x.id)===String(id));
   if(b){go('mine');renderBookings();}
 }
-function addBooking(){if(state._booked)return;state._booked=true;state.bookings.unshift({id:Date.now(),zone:state.zone,zoneName:z().name,img:z().img,table:state.table,paid:true,status:'manager_confirmation',payMethod:state.payMethod,name:state.name,phone:state.phone,guests:state.guests||2,date:state.date,time:state.time,note:state.note,source:'Mini App',deposit:'500 000 VND'});setTimeout(()=>state._booked=false,500);}
+function addBooking(){if(state._booked)return;state._booked=true;state.bookings.unshift({id:Date.now(),zone:state.zone,zoneName:z().name,img:z().img,table:state.table,paid:true,status:'manager_confirmation',payMethod:state.payMethod,name:state.name,phone:state.phone,guests:state.guests||2,date:state.date,time:state.time,note:state.note,source:'Mini App',deposit:'500 000 VND',sourceUserId:state.phone||'',customerLang:lang,crmContactId:'CRM-'+String(Date.now()).slice(-6),firstContact:localISO(),lastContact:localISO(),historyCount:1});setTimeout(()=>state._booked=false,500);}
 function renderBookings(){
   let list=$('#bookingList'); if(!list)return;
   list.innerHTML=(state.bookings.length?state.bookings.map(b=>`<div class="bookingCard"><img src="${b.img}"><div><h3>${b.zoneName} · ${b.table}</h3><p>${formatDateLabel(b.date)} · ${b.time}</p><p>${b.name} · ${b.phone} · ${b.guests} ${t('guests')}</p><span class="tag">${b.payMethod} · ${statusLabel(b.status)}</span></div><div class="actions"><button class="btn bad" onclick="cancelBooking(${b.id})">${t('cancel')}</button></div></div>`).join(''):`<div class="card"><p>${t('empty')}</p></div>`)+`<button class="btn full" style="margin-top:4px" onclick="startNewBooking()">${t('bookNow')}</button>`;
@@ -333,29 +344,62 @@ function renderAdmin(){
 
   const filter=$('#adminFilter');
   if(filter){
-    filter.innerHTML=`<option value="all">${t('allStatuses')}</option>`+statusKeys.map(s=>`<option value="${s}">${statusLabel(s)}</option>`).join('');
-    filter.value=state.adminFilter||'all';
+    filter.innerHTML=`<button class="adminFilterBtn ${!state.adminFilter||state.adminFilter==='all'?'on':''}" onclick="state.adminFilter='all';renderAdmin()">${t('allStatuses')}</button>`+
+      statusKeys.map(s=>`<button class="adminFilterBtn ${state.adminFilter===s?'on':''}" onclick="state.adminFilter='${s}';renderAdmin()">${statusLabel(s)}</button>`).join('');
   }
+
   const shown=(state.adminFilter&&state.adminFilter!=='all')?all.filter(b=>b.status===state.adminFilter):all;
-  $('#adminList').innerHTML=shown.length?shown.map(b=>`<div class="crmBooking ${b.demo?'demo':''}">
-    <div class="crmBookingHead"><div><h3>${b.zoneName} · ${b.table}</h3><p>#${b.id} · ${formatDateLabel(b.date)} · ${b.time}</p></div>${b.demo?`<span class="crmBadge">${t('demoRecord')}</span>`:''}</div>
-    <div class="crmFields">
-      <div class="crmField"><span>${t('customer')}</span><b>${b.name}<br>${b.phone}</b></div>
-      <div class="crmField"><span>${t('guests')}</span><b>${b.guests}</b></div>
-      <div class="crmField"><span>${t('source')}</span><b>${b.source||'Mini App'}</b></div>
-      <div class="crmField"><span>${t('deposit')}</span><b>${b.paid?(b.deposit||'500 000 VND'):'—'} · ${b.payMethod||'—'}</b></div>
-      <div class="crmField"><span>${t('comment')}</span><b>${b.note||'—'}</b></div>
-      <div class="crmField"><span>${t('status')}</span><b>${statusLabel(b.status)}</b></div>
-    </div>
-    <div class="crmActions"><select onchange="setBookingStatus('${b.id}',this.value)">${statusKeys.map(s=>`<option value="${s}" ${b.status===s?'selected':''}>${statusLabel(s)}</option>`).join('')}</select>${b.demo?'':`<button class="btn secondary" onclick="focusClientBooking('${b.id}')">${t('openClientView')}</button>`}</div>
-  </div>`).join(''):`<p>${t('empty')}</p>`;
+  $('#adminList').innerHTML=shown.length?shown.map(b=>{
+    const langLabel=String(b.customerLang||lang).toUpperCase();
+    const history=(Number(b.historyCount)||1)+'';
+    return `<div class="crmBooking ${b.demo?'demo':''}">
+      <div class="crmBookingHead">
+        <div><h3>${b.zoneName} · ${b.table}</h3><p>#${b.id} · ${formatDateLabel(b.date)} · ${b.time}</p></div>
+        <div class="crmHeadRight">${b.demo?`<span class="crmBadge">${t('demoRecord')}</span>`:''}<span class="crmStatusBadge">${statusLabel(b.status)}</span></div>
+      </div>
+
+      <div class="crmSection">
+        <div class="crmSectionTitle"><h4>${t('clientDataTitle')}</h4><span>${t('clientSyncHint')}</span></div>
+        <div class="crmFields">
+          <div class="crmField"><span>${t('name')}</span><b>${b.name||'—'}</b></div>
+          <div class="crmField"><span>${t('phone')}</span><b>${b.phone||'—'}</b></div>
+          <div class="crmField"><span>${t('source')}</span><b>${b.source||'Mini App'}</b></div>
+          <div class="crmField"><span>${t('sourceUserId')}</span><b>${b.sourceUserId||t('notAvailable')}</b></div>
+          <div class="crmField"><span>${t('interfaceLanguage')}</span><b>${langLabel}</b></div>
+          <div class="crmField"><span>${t('crmClientId')}</span><b>${b.crmContactId||t('notAvailable')}</b></div>
+          <div class="crmField"><span>${t('firstContact')}</span><b>${b.firstContact||t('notAvailable')}</b></div>
+          <div class="crmField"><span>${t('bookingHistory')}</span><b>${history} · ${t('oneBooking')}</b></div>
+        </div>
+      </div>
+
+      <div class="crmSection">
+        <div class="crmSectionTitle"><h4>${t('bookingDataTitle')}</h4><span>#${b.id}</span></div>
+        <div class="crmFields">
+          <div class="crmField"><span>${t('date')} / ${t('time')}</span><b>${formatDateLabel(b.date)} · ${b.time}</b></div>
+          <div class="crmField"><span>${t('position')} / ${t('table')}</span><b>${b.zoneName} · ${b.table}</b></div>
+          <div class="crmField"><span>${t('guests')}</span><b>${b.guests}</b></div>
+          <div class="crmField"><span>${t('paymentStatus')}</span><b>${b.paid?t('paidYes'):t('paidNo')}</b></div>
+          <div class="crmField"><span>${t('deposit')}</span><b>${b.paid?(b.deposit||'500 000 VND'):'—'} · ${b.payMethod||'—'}</b></div>
+          <div class="crmField wide"><span>${t('comment')}</span><b>${b.note||'—'}</b></div>
+        </div>
+      </div>
+
+      <div class="crmStatusPanel">
+        <span>${t('statusActions')}</span>
+        <div class="crmStatusActions">${statusKeys.map(s=>`<button class="crmStatusBtn ${b.status===s?'on':''} ${s==='cancelled'?'cancel':''}" onclick="setBookingStatus('${b.id}','${s}')">${statusLabel(s)}</button>`).join('')}</div>
+      </div>
+      ${b.demo?'':`<div class="crmFooter"><button class="btn secondary" onclick="focusClientBooking('${b.id}')">${t('openClientView')}</button></div>`}
+    </div>`;
+  }).join(''):`<p>${t('empty')}</p>`;
 
   const mappings=[
+    [t('name')+' / '+t('phone'),'contact.name / contact.phone'],
+    [t('sourceUserId'),'contact.external_id'],
+    [t('interfaceLanguage'),'contact.language'],
     [t('date')+' / '+t('time'),'booking_datetime'],
     [t('position'),'zone / product'],
     [t('table'),'resource_id / table'],
     [t('guests'),'party_size'],
-    [t('customer'),'customer.name / contact'],
     [t('source'),'source_channel'],
     [t('comment'),'note'],
     [t('deposit'),'payment_status / method'],
