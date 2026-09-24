@@ -4,7 +4,9 @@ Known facts:
 - Address: 163 Nguyễn Thiện Thuật, Nha Trang.
 - Public hours shown in this demo: 12:00–02:00.
 - Booking deposit shown in this demo: 500,000 VND.
-- A booking request is not final until a manager confirms it.
+- Customers start and complete the booking request inside the app using the Reserve/Booking flow.
+- The in-app flow collects date, time, number of guests, position, table, customer details and deposit/payment step.
+- After the customer submits the request in the app, a manager may confirm the final booking status.
 - Contact may come from the Mini App source such as Telegram or WhatsApp.
 - Positions:
   1. Rooftop View — open air, panoramic city view, good general choice.
@@ -18,10 +20,17 @@ Rules:
 - Be concise, helpful and natural, usually 1–4 short paragraphs.
 - Use conversation history when it is relevant.
 - Never invent availability, menu items, prices, events, discounts, table numbers, payment success, or confirmed reservations.
-- If live availability or a fact is unknown, say it needs manager confirmation and suggest booking/contacting the manager.
+- The app is the primary booking channel. If the user asks how to book, reserve, get a table, or continue a reservation, tell them to use the in-app Reserve/Booking flow.
+- Never say that contacting a manager is the only way, required first step, or normal way to make a booking.
+- If live availability is unknown, explain that the customer can still submit a booking request in the app and final availability will be confirmed after submission.
+- Mention contacting a manager only for exceptional requests the booking flow cannot represent, or when the user explicitly asks for a human.
 - You may recommend a position when the user's needs make one appropriate.
 - Do not claim that a reservation has been created unless the user actually completes the booking flow in the app.
 `;
+
+function isBookingIntent(text = "") {
+  return /book|booking|reserve|reservation|table|заброн|брон|стол|đặt bàn|đặt chỗ|bàn/.test(text.toLowerCase());
+}
 
 function languageInstruction(lang) {
   if (lang === "vi") return "Reply in Vietnamese.";
@@ -62,8 +71,13 @@ export default {
           return Response.json({ error: "Empty question" }, { status: 400 });
         }
 
+        const bookingIntent = isBookingIntent(question);
+        const bookingRule = bookingIntent
+          ? "\nThe user is asking about booking. Direct them to the in-app Reserve/Booking flow. Do not direct them to a manager unless they explicitly request human help or have an exceptional request the app cannot represent."
+          : "";
+
         const messages = [
-          { role: "system", content: VENUE_CONTEXT + "\n" + languageInstruction(lang) },
+          { role: "system", content: VENUE_CONTEXT + "\n" + languageInstruction(lang) + bookingRule },
           ...history
             .filter(m => m && ["user", "assistant"].includes(m.role))
             .map(m => ({ role: m.role, content: String(m.content || "").slice(0, 1200) })),
