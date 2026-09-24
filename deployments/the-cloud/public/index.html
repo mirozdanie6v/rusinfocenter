@@ -21,9 +21,14 @@
 .bubble.bot{background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.075);border-bottom-left-radius:7px}
 .bubble.user{background:rgba(244,191,95,.13);border:1px solid rgba(244,191,95,.19);margin-left:auto;border-bottom-right-radius:7px}
 .bubble.loading{color:var(--muted);animation:aiPulse 1.1s ease-in-out infinite}.bubble.error{border-color:rgba(255,131,131,.28);background:rgba(255,131,131,.08);color:#ffd1d1}@keyframes aiPulse{50%{opacity:.55}}
-.aiSuggestion{margin-top:10px;padding:11px 12px;border:1px solid rgba(244,191,95,.18);border-radius:17px;background:rgba(244,191,95,.055)}
-.aiSuggestionTop{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.aiSuggestionText{min-width:0}.aiSuggestionText span{display:block;color:var(--gold2);font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px}.aiSuggestionText b{display:block;font-size:14px}.aiSuggestionText p{font-size:11.5px;margin-top:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.aiSuggestionActions{display:flex;gap:7px;margin-top:10px}.aiSuggestionActions button{flex:1;min-height:38px;border-radius:13px;font-size:11px;font-weight:900}.aiSuggestionActions .secondary{background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.09);color:#fff}.aiSuggestionActions .primary{border:0;background:linear-gradient(180deg,#ffda88,#f0b446);color:#241506}
+.aiActionsStack{display:grid;gap:9px;margin-top:10px}
+.aiZoneCard{display:grid;grid-template-columns:88px minmax(0,1fr);gap:10px;padding:9px;border:1px solid rgba(244,191,95,.18);border-radius:18px;background:rgba(244,191,95,.05)}
+.aiZoneCard img{width:88px;height:84px;object-fit:cover;border-radius:14px;display:block}
+.aiZoneBody{min-width:0;display:flex;flex-direction:column;justify-content:center}.aiZoneBody span{display:block;color:var(--gold2);font-size:9.5px;font-weight:900;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px}.aiZoneBody b{display:block;font-size:14px}.aiZoneBody p{font-size:11px;margin-top:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.aiZoneActions{grid-column:1/-1;display:grid;grid-template-columns:auto 1fr;gap:7px}.aiZoneActions button{min-height:39px;border-radius:13px;font-size:11px;font-weight:900;padding:0 12px}.aiZoneActions .secondary{background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.09);color:#fff}.aiZoneActions .primary{border:0;background:linear-gradient(180deg,#ffda88,#f0b446);color:#241506}
+.aiManagerCard{padding:11px 12px;border:1px solid rgba(101,220,255,.18);border-radius:17px;background:rgba(101,220,255,.055)}
+.aiManagerCard span{display:block;font-size:11px;line-height:1.4;color:#d9f7ff;margin-bottom:9px}.aiManagerBtn{display:flex;align-items:center;justify-content:center;min-height:40px;border-radius:13px;background:rgba(101,220,255,.10);border:1px solid rgba(101,220,255,.22);color:#e7fbff;text-decoration:none;font-size:11px;font-weight:900}
+@media(max-width:360px){.aiZoneCard{grid-template-columns:76px minmax(0,1fr)}.aiZoneCard img{width:76px;height:76px}}
 .aiComposer{flex:none;padding:8px 12px 10px;border-top:1px solid rgba(255,255,255,.07);background:rgba(7,8,12,.97);backdrop-filter:blur(18px)}
 .aiInputRow{display:grid;grid-template-columns:minmax(0,1fr) 44px;gap:7px;align-items:end;padding:5px 5px 5px 11px;border:1px solid rgba(255,255,255,.11);border-radius:22px;background:rgba(255,255,255,.055)}
 .aiInputRow textarea{min-height:42px;max-height:106px;height:42px;border:0!important;border-radius:0;background:transparent!important;padding:10px 0!important;resize:none;line-height:1.35;font-size:15px;overflow-y:auto;box-shadow:none}
@@ -258,9 +263,9 @@ status_new:"Mới",status_manager_confirmation:"Chờ xác nhận",status_confir
 openClientView:"Mở giao diện khách",fieldClient:"Trường phía khách",fieldCrm:"Trường CRM",syncNote:"Đổi trạng thái tại đây mô phỏng phản hồi từ CRM và cập nhật ngay đặt bàn phía khách.",
 clientDataTitle:"Dữ liệu khách hàng",bookingDataTitle:"Đặt bàn",crmClientId:"CRM Contact ID",sourceUserId:"ID / username nguồn",interfaceLanguage:"Ngôn ngữ khách",firstContact:"Liên hệ đầu tiên",lastContact:"Liên hệ gần nhất",bookingHistory:"Lịch sử",oneBooking:"1 đặt bàn",statusActions:"Đổi trạng thái",notAvailable:"Chưa có dữ liệu",paymentStatus:"Trạng thái thanh toán",paidYes:"Đã thanh toán",paidNo:"Chưa thanh toán",clientSyncHint:"Các trường này tạo hoặc cập nhật hồ sơ liên hệ khách hàng trong CRM."
 });
-Object.assign(TT.ru,{aiThinking:"Думаю…",aiError:"Не удалось получить ответ. Попробуйте ещё раз.",aiEmpty:"Напишите вопрос.",aiOnline:"Онлайн",aiText:"Задайте вопрос о The Cloud, бронировании, позициях или атмосфере — консультант учитывает контекст диалога."});
-Object.assign(TT.en,{aiThinking:"Thinking…",aiError:"I couldn't get a response. Please try again.",aiEmpty:"Type a question.",aiOnline:"Online",aiText:"Ask about The Cloud, booking, positions or the atmosphere — the assistant keeps the conversation context."});
-Object.assign(TT.vi,{aiThinking:"Đang suy nghĩ…",aiError:"Không thể nhận phản hồi. Vui lòng thử lại.",aiEmpty:"Hãy nhập câu hỏi.",aiOnline:"Trực tuyến",aiText:"Hỏi về The Cloud, đặt bàn, vị trí hoặc không khí — trợ lý ghi nhớ ngữ cảnh cuộc trò chuyện."});
+Object.assign(TT.ru,{aiThinking:"Думаю…",aiError:"Не удалось получить ответ. Попробуйте ещё раз.",aiEmpty:"Напишите вопрос.",aiOnline:"Онлайн",bookThisZone:"Забронировать эту зону",managerHelp:"Для этого вопроса лучше уточнить у менеджера.",contactManager:"Связаться с менеджером",aiText:"Задайте вопрос о The Cloud, бронировании, позициях или атмосфере — консультант учитывает контекст диалога."});
+Object.assign(TT.en,{aiThinking:"Thinking…",aiError:"I couldn't get a response. Please try again.",aiEmpty:"Type a question.",aiOnline:"Online",bookThisZone:"Book this area",managerHelp:"It’s better to confirm this with a manager.",contactManager:"Contact manager",aiText:"Ask about The Cloud, booking, positions or the atmosphere — the assistant keeps the conversation context."});
+Object.assign(TT.vi,{aiThinking:"Đang suy nghĩ…",aiError:"Không thể nhận phản hồi. Vui lòng thử lại.",aiEmpty:"Hãy nhập câu hỏi.",aiOnline:"Trực tuyến",bookThisZone:"Đặt khu vực này",managerHelp:"Vấn đề này nên được xác nhận với quản lý.",contactManager:"Liên hệ quản lý",aiText:"Hỏi về The Cloud, đặt bàn, vị trí hoặc không khí — trợ lý ghi nhớ ngữ cảnh cuộc trò chuyện."});
 let aiHistory=[];
 let aiBusy=false;
 const t=k=>(TT[lang]&&TT[lang][k])||TT.ru[k]||k;
@@ -476,11 +481,24 @@ function appendAiBubble(role,text,extra=''){
   syncAiEmptyState();
   requestAnimationFrame(()=>scrollAiToBottom());
 }
-function renderAiRecommendation(zoneId){
-  const x=ZONES.find(v=>v.id===zoneId);
-  if(!x){$('#aiRec').innerHTML='';return;}
-  state.zone=x.id;
-  $('#aiRec').innerHTML=`<div class="aiSuggestion"><div class="aiSuggestionTop"><div class="aiSuggestionText"><span>${t('recommended')}</span><b>${x.name}</b><p>${zt(x,'desc')}</p></div></div><div class="aiSuggestionActions"><button class="secondary" data-open="${x.id}">${t('view')}</button><button class="primary" onclick="step=1;maxStep=Math.max(maxStep,1);go('book');renderBook()">${t('toBooking')}</button></div></div>`;
+function bookAiZone(id){
+  const x=ZONES.find(v=>v.id===id); if(!x)return;
+  state.zone=id;
+  step=0;
+  maxStep=Math.max(maxStep,1);
+  go('book');
+  renderBook();
+}
+function renderAiActions(zoneIds=[],needsManager=false){
+  const ids=[...new Set(Array.isArray(zoneIds)?zoneIds:[])].slice(0,2);
+  const zones=ids.map(id=>ZONES.find(v=>v.id===id)).filter(Boolean);
+  const zoneHtml=zones.map(x=>`<div class="aiZoneCard">
+    <img src="${x.img}" alt="${x.name}">
+    <div class="aiZoneBody"><span>${t('recommended')}</span><b>${x.name}</b><p>${zt(x,'desc')}</p></div>
+    <div class="aiZoneActions"><button class="secondary" data-open="${x.id}">${t('view')}</button><button class="primary" onclick="bookAiZone('${x.id}')">${t('bookThisZone')}</button></div>
+  </div>`).join('');
+  const managerHtml=needsManager?`<div class="aiManagerCard"><span>${t('managerHelp')}</span><a class="aiManagerBtn" href="https://wa.me/84825190251" target="_blank" rel="noopener">${t('contactManager')}</a></div>`:'';
+  $('#aiRec').innerHTML=(zoneHtml||managerHtml)?`<div class="aiActionsStack">${zoneHtml}${managerHtml}</div>`:'';
   $$('[data-open]').forEach(b=>b.onclick=()=>openZone(b.dataset.open));
   requestAnimationFrame(()=>scrollAiToBottom());
 }
@@ -493,6 +511,7 @@ async function aiRespond(){
   // Clear immediately so the next question never requires deleting the previous one.
   input.value='';
   resizeAiInput();
+  $('#aiRec').innerHTML='';
   appendAiBubble('user',question);
   aiBusy=true;
   const btn=$('#askBtn');
@@ -514,7 +533,7 @@ async function aiRespond(){
     appendAiBubble('bot',data.reply);
     aiHistory.push({role:'user',content:question},{role:'assistant',content:data.reply});
     if(aiHistory.length>16) aiHistory=aiHistory.slice(-16);
-    renderAiRecommendation(data.recommendedZone);
+    renderAiActions(data.recommendedZones,data.needsManager);
   }catch(err){
     console.error(err);
     $('#'+loadingId)?.remove();
