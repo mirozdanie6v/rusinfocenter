@@ -23,8 +23,11 @@ Rules:
 - The app is the primary booking channel. If the user asks how to book, reserve, get a table, or continue a reservation, tell them to use the in-app Reserve/Booking flow.
 - Never say that contacting a manager is the only way, required first step, or normal way to make a booking.
 - If live availability is unknown, explain that the customer can still submit a booking request in the app and final availability will be confirmed after submission.
-- Mention contacting a manager only for exceptional requests the booking flow cannot represent, or when the user explicitly asks for a human.
-- You may recommend a position when the user's needs make one appropriate.
+- Mention contacting a manager only for exceptional requests, facts not present in the known data, or when the user explicitly asks for a human.
+- If you need human help because the requested information is not in the known facts, end the reply with exactly [MANAGER_HELP]. Do not use this marker for normal booking or availability questions.
+- You may recommend positions when the user's needs make them appropriate. Recommend only genuinely suitable positions, never all positions by default, and never more than two in one answer.
+- When recommending a position, use its exact name: Rooftop View, Sunset Line, Shisha Lounge, Bar / Social, or Group / VIP.
+- The UI will provide booking buttons for any exact position names you recommend, so do not tell the user to manually search for the position.
 - Do not claim that a reservation has been created unless the user actually completes the booking flow in the app.
 `;
 
@@ -38,14 +41,36 @@ function languageInstruction(lang) {
   return "Reply in Russian.";
 }
 
-function recommendZone(text = "") {
+function recommendZones(text = "") {
   const q = text.toLowerCase();
-  if (/shisha|hookah|кальян|shisha|thuốc shisha/.test(q)) return "shisha";
-  if (/sunset|закат|golden hour|hoàng hôn/.test(q)) return "sunset";
-  if (/group|company|birthday|компан|день рождения|nhóm|sinh nhật|vip|private|приват/.test(q)) return "vip";
-  if (/bar|cocktail|music|music|бар|коктейл|музык|âm nhạc|cocktail/.test(q)) return "bar";
-  if (/view|вид|панорам|photo|фото|ảnh|tầm nhìn|rooftop/.test(q)) return "roof";
-  return null;
+  const out = [];
+  const add = id => { if (!out.includes(id) && out.length < 2) out.push(id); };
+
+  // Prefer exact zone names from the AI reply.
+  if (q.includes("rooftop view")) add("roof");
+  if (q.includes("sunset line")) add("sunset");
+  if (q.includes("shisha lounge")) add("shisha");
+  if (q.includes("bar / social") || q.includes("bar/social")) add("bar");
+  if (q.includes("group / vip") || q.includes("group/vip")) add("vip");
+
+  // Fallback from the user's intent when exact names were not emitted.
+  if (out.length < 2 && /sunset|закат|golden hour|hoàng hôn/.test(q)) add("sunset");
+  if (out.length < 2 && /shisha|hookah|кальян|thuốc shisha/.test(q)) add("shisha");
+  if (out.length < 2 && /group|company|birthday|компан|день рождения|nhóm|sinh nhật|vip|private|приват/.test(q)) add("vip");
+  if (out.length < 2 && /bar|cocktail|music|бар|коктейл|музык|âm nhạc/.test(q)) add("bar");
+  if (out.length < 2 && /view|вид|панорам|photo|фото|ảnh|tầm nhìn|rooftop/.test(q)) add("roof");
+
+  return out.slice(0, 2);
+}
+
+function extractActions(rawReply, question) {
+  const needsManager = rawReply.includes("[MANAGER_HELP]");
+  const reply = rawReply.replace(/\s*\[MANAGER_HELP\]\s*/g, " ").trim();
+  return {
+    reply,
+    needsManager,
+    recommendedZones: recommendZones(question + "\n" + reply)
+  };
 }
 
 export default {
@@ -90,13 +115,11 @@ export default {
           temperature: 0.35
         });
 
-        const reply = String(result?.response || "").trim();
-        if (!reply) throw new Error("Empty AI response");
+        const rawReply = String(result?.response || "").trim();
+        if (!rawReply) throw new Error("Empty AI response");
 
-        return Response.json({
-          reply,
-          recommendedZone: recommendZone(question + " " + reply)
-        });
+        const actions = extractActions(rawReply, question);
+        return Response.json(actions);
       } catch (error) {
         console.error("AI concierge error", error);
         return Response.json({ error: "AI temporarily unavailable" }, { status: 500 });
