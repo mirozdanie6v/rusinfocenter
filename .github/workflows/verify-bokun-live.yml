@@ -51,4 +51,13 @@ jobs:
             test "$code" = "200"
           done
 
-          echo 'RESULT=BOKUN_CONNECTION_OK_TWO_PRODUCTS_READABLE'
+          for product in 1287578 1287580; do
+            echo "=== AVAILABILITY $product ==="
+            code=$(curl -sS -o "/tmp/availability-$product.json" -w '%{http_code}' "$base/api/bokun/availability?vendorId=$vendor&productId=$product&start=2026-09-26&end=2026-10-02&currency=USD")
+            echo "HTTP $code"
+            test "$code" = "200"
+            jq -e . "/tmp/availability-$product.json" >/dev/null
+            jq 'if type == "array" then {entries:length, sample:(.[0] // null)} else {type:type, keys:(keys // [])} end' "/tmp/availability-$product.json"
+          done
+
+          echo 'RESULT=BOKUN_CONNECTION_OK_PRODUCTS_AND_AVAILABILITY_READABLE'
