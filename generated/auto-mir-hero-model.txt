@@ -1,1 +1,1 @@
-@cf/black-forest-labs/flux-2-klein-9b
+Cloudflare FLUX.2 scene + deterministic 3-flag compositor
