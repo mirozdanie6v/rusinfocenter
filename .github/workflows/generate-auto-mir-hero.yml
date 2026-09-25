@@ -1,0 +1,80 @@
+name: Generate AUTO MIR hero via Cloudflare AI
+
+on:
+  push:
+    branches:
+      - ops/auto-mir-hero-gen
+    paths:
+      - '.generate-auto-mir-hero'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ops/auto-mir-hero-gen
+
+      - name: Validate Cloudflare AI credentials
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
+
+      - name: Generate hero image
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROMPT='High-end cinematic automotive website hero image, matching a luxury dark mobile car-import landing page composition. No text, no typography, no logos, no icons, no interface controls, no buttons, no badges, no watermarks. Three large realistic fabric flags sweep diagonally from the upper-right toward the center: United States flag on top, Georgia national flag in the middle, Russian flag below, elegant flowing folds, dramatic rim light. Background is a seamless cinematic composite of three markets: subtle Manhattan skyline and Brooklyn Bridge on the left, Tbilisi old city and Narikala fortress on a rocky hill in the center, modern Moscow skyline on the right, all blended naturally at dusk. Foreground on wet reflective black pavement: one large unbranded black premium luxury SUV in front, three-quarter view, and one silver premium luxury sedan slightly behind to the right. No visible car brand emblems or readable license plates. Warm golden light streaks connect the cities, premium black-and-gold mood, photorealistic, expensive automotive advertising, strong depth, realistic reflections, dramatic but clean. Keep the upper-left and left-center darker and less busy so existing website copy can be overlaid there. Important visual elements should remain inside the central 70 percent so the image crops well on mobile and desktop.'
+
+          payload=$(jq -n --arg prompt "$PROMPT" '{
+            model:"black-forest-labs/flux-2-max",
+            input:{
+              prompt:$prompt,
+              width:1536,
+              height:1152,
+              output_format:"jpeg",
+              safety_tolerance:2,
+              seed:251987
+            }
+          }')
+
+          response=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/run"             -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}"             -H "Content-Type: application/json"             --data "$payload" || true)
+
+          image_url=$(printf '%s' "$response" | jq -r '.result.image // empty' 2>/dev/null || true)
+          model_used='black-forest-labs/flux-2-max'
+
+          if [ -z "$image_url" ]; then
+            echo "FLUX.2 max unavailable, falling back to Cloudflare-hosted FLUX.1 schnell"
+            payload=$(jq -n --arg prompt "$PROMPT" '{prompt:$prompt,steps:8,seed:251987}')
+            response=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/run/@cf/black-forest-labs/flux-1-schnell"               -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}"               -H "Content-Type: application/json"               --data "$payload")
+            image_b64=$(printf '%s' "$response" | jq -r '.result.image // .image // empty')
+            test -n "$image_b64"
+            printf '%s' "$image_b64" | base64 -d > /tmp/auto-mir-hero.jpg
+            model_used='@cf/black-forest-labs/flux-1-schnell'
+          else
+            curl -LfsS "$image_url" -o /tmp/auto-mir-hero.jpg
+          fi
+
+          file /tmp/auto-mir-hero.jpg
+          test -s /tmp/auto-mir-hero.jpg
+          mkdir -p generated
+          base64 -w0 /tmp/auto-mir-hero.jpg > generated/auto-mir-hero.b64
+          printf '%s\n' "$model_used" > generated/auto-mir-hero-model.txt
+
+      - name: Save generated asset payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "VIIVERSION Cloudflare AI"
+          git config user.email "49186663+mirozdanie6v@users.noreply.github.com"
+          git add generated/auto-mir-hero.b64 generated/auto-mir-hero-model.txt
+          git commit -m "Generate AUTO MIR hero asset with Cloudflare AI" || exit 0
+          git push origin HEAD:ops/auto-mir-hero-gen
