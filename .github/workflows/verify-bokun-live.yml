@@ -1,0 +1,54 @@
+name: Verify Bókun Live Connection
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.verify-bokun-live'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check VIIVERSION integration and Bókun connection
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://integration.viiversion.com"
+          vendor="137689"
+
+          echo '=== HEALTH ==='
+          curl -fsS "$base/health" | tee /tmp/health.json | jq .
+
+          echo '=== STATUS ==='
+          status_code=$(curl -sS -o /tmp/status.json -w '%{http_code}' "$base/api/bokun/status?vendorId=$vendor")
+          echo "HTTP $status_code"
+          cat /tmp/status.json | jq .
+          test "$status_code" = "200"
+          jq -e '.ok == true and .vendorId == "137689" and .oauthConnected == true' /tmp/status.json >/dev/null
+
+          rest_ready=$(jq -r '.restCredentialsReady' /tmp/status.json)
+          echo "REST_CREDENTIALS_READY=$rest_ready"
+          if [ "$rest_ready" != "true" ]; then
+            echo 'RESULT=OAUTH_CONNECTED_BUT_REST_CREDENTIALS_NOT_READY'
+            exit 2
+          fi
+
+          for product in 1287578 1287580; do
+            echo "=== PRODUCT $product ==="
+            code=$(curl -sS -o "/tmp/product-$product.json" -w '%{http_code}' "$base/api/bokun/product?vendorId=$vendor&productId=$product")
+            echo "HTTP $code"
+            if jq -e . "/tmp/product-$product.json" >/dev/null 2>&1; then
+              jq '{id:(.id // .activityId // null), title:(.title // .name // null), vendor:(.vendor // .vendorId // null)}' "/tmp/product-$product.json" || true
+            else
+              cat "/tmp/product-$product.json"
+            fi
+            test "$code" = "200"
+          done
+
+          echo 'RESULT=BOKUN_CONNECTION_OK_TWO_PRODUCTS_READABLE'
