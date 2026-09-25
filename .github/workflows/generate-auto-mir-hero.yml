@@ -75,8 +75,8 @@ jobs:
             "width":768,
             "height":1344,
             "num_steps":20,
-            "strength":0.42,
-            "guidance":8.0,
+            "strength":0.38,
+            "guidance":8.5,
             "seed":942731
           }
           with open('/tmp/img2img-payload.json','w') as fh:
@@ -88,13 +88,13 @@ jobs:
 
           code=$(curl -sS -o /tmp/hero-response.bin -w '%{http_code}' \
             --request POST \
-            --url "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/run/@cf/stabilityai/stable-diffusion-xl-base-1.0" \
+            --url "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/run/@cf/runwayml/stable-diffusion-v1-5-img2img" \
             --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
             --header "Content-Type: application/json" \
             --data-binary @/tmp/img2img-payload.json)
 
           if [ "$code" != "200" ]; then
-            echo "Cloudflare SDXL img2img failed HTTP $code"
+            echo "Cloudflare dedicated img2img failed HTTP $code"
             head -c 3000 /tmp/hero-response.bin || true
             exit 1
           fi
