@@ -64,21 +64,25 @@ jobs:
           PROMPT='Preserve the exact camera composition, relative object positions and visual hierarchy of the input reference image: large flowing United States flag in the upper-right, Georgian flag immediately below it, Russian tricolor below that; New York bridge and skyline at the left background, old Tbilisi hill and fortress in the center background, modern Moscow skyline at the right background; a large glossy black premium luxury SUV in the lower foreground and a silver premium luxury sedan slightly behind on the right. Reconstruct this as one clean full-bleed cinematic photographic automotive hero background. Remove the smartphone frame and every interface element completely. Remove and reconstruct over all typography, captions, logos, icons, menus, controls, cards, buttons and badges so only continuous photographic scenery remains beneath them. No people. Keep the same dark luxury black-and-champagne lighting, wet pavement reflections, warm gold light trails, realistic fabric flags, photorealistic architecture and premium automotive-advertising finish. Leave the upper-left and left-center darker and visually calm for website text overlay. Do not add any new writing or graphic symbols.'
           NEGATIVE='text, typography, letters, words, numbers, logo, watermark, brand emblem, badge, icon, button, menu, navigation, UI, interface, smartphone frame, phone bezel, status bar, card, caption, readable license plate, people, person, extra car, duplicate car, distorted wheels, deformed vehicle, merged flags, wrong flag pattern, cartoon, illustration, low quality'
 
-          jq -n \
-            --arg prompt "$PROMPT" \
-            --arg neg "$NEGATIVE" \
-            --rawfile image /tmp/reference-normalized.b64 \
-            '{
-              prompt:$prompt,
-              negative_prompt:$neg,
-              image_b64:($image|gsub("\\n";"")),
-              width:768,
-              height:1365,
-              num_steps:20,
-              strength:0.42,
-              guidance:8.0,
-              seed:942731
-            }' > /tmp/img2img-payload.json
+          export PROMPT NEGATIVE
+          python <<'PY'
+          import json,os
+          image=list(open('/tmp/reference.jpg','rb').read())
+          payload={
+            "prompt":os.environ["PROMPT"],
+            "negative_prompt":os.environ["NEGATIVE"],
+            "image":image,
+            "width":768,
+            "height":1344,
+            "num_steps":20,
+            "strength":0.42,
+            "guidance":8.0,
+            "seed":942731
+          }
+          with open('/tmp/img2img-payload.json','w') as fh:
+              json.dump(payload,fh,separators=(',',':'))
+          print("reference input bytes:",len(image))
+          PY
 
           echo "img2img payload bytes: $(wc -c < /tmp/img2img-payload.json)"
 
