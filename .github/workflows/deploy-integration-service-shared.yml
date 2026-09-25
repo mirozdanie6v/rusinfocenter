@@ -74,6 +74,13 @@ jobs:
           set -euo pipefail
           npx wrangler deploy --config wrangler.shared.jsonc
 
+      - name: List configured Worker secret names
+        working-directory: viiversion/integration-service
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler secret list --config wrangler.shared.jsonc
+
       - name: Attach integration.viiversion.com
         shell: bash
         run: |
