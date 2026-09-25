@@ -1,0 +1,37 @@
+name: Inspect VIIVERSION Integration Bindings
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.inspect-integration-bindings'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      WORKER_NAME: viiversion-integration
+
+    steps:
+      - name: Inspect target binding names and types
+        shell: bash
+        run: |
+          set -euo pipefail
+          response=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${WORKER_NAME}/settings" \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}")
+          echo "$response" | jq -e '.success == true' >/dev/null
+          echo "$response" | jq '{
+            bindings: [
+              .result.bindings[]
+              | select(.name == "BOKUN_APP_API_KEY" or .name == "BOKUN_APP_API_SECRET" or .name == "DATA_ENCRYPTION_KEY" or .name == "INTEGRATION_ADMIN_TOKEN")
+              | {name, type}
+            ]
+          }'
