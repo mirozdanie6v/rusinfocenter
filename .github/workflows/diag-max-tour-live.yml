@@ -16,21 +16,14 @@ jobs:
       - name: Inspect live bundle
         shell: bash
         run: |
-          set -euo pipefail
+          set -u
           base='https://max-tour.viiversion.com'
-          curl -L -fsS "$base/" -o /tmp/home.html
-          echo '--- LIVE HTML ASSETS ---'
-          grep -oE '/assets/[^"]+\.(js|css)' /tmp/home.html | sort -u || true
-          js=$(grep -oE '/assets/[^"]+\.js' /tmp/home.html | head -n1)
-          test -n "$js"
-          curl -L -fsS "$base$js" -o /tmp/live.js
-          echo '--- FINGERPRINTS ---'
-          for needle in 'is-max-tour-production' 'LocaleProvider' 'Tiếng Việt' 'VIETNAM' 'production-demo-proxy' 'UnifiedAdminTourPage'; do
-            if grep -Fq "$needle" /tmp/live.js; then
-              echo "$needle=YES"
-            else
-              echo "$needle=NO"
-            fi
-          done
-          echo "JS_SHA256=$(sha256sum /tmp/live.js | awk '{print $1}')"
-          echo "JS_BYTES=$(wc -c </tmp/live.js)"
+          curl -L -sS -D /tmp/headers.txt "$base/" -o /tmp/home.html
+          echo '--- STATUS / HEADERS ---'
+          cat /tmp/headers.txt
+          echo '--- LIVE HTML ---'
+          sed -n '1,120p' /tmp/home.html
+          echo '--- SCRIPT SOURCES ---'
+          grep -oE 'src=["'"'"'][^"'"'"']+["'"'"']' /tmp/home.html || true
+          echo '--- ASSET HREFS ---'
+          grep -oE 'href=["'"'"'][^"'"'"']+["'"'"']' /tmp/home.html || true
