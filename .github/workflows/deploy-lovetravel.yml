@@ -1,0 +1,126 @@
+name: Deploy LoveTravel to Cloudflare
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.deploy-lovetravel'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lovetravel-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      VIIVERSION_ZONE_ID: 56fa9423ef85e05559f453af43ec400f
+    steps:
+      - name: Checkout deployment bridge
+        uses: actions/checkout@v5
+
+      - name: Require Cloudflare credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}" || { echo 'CLOUDFLARE_API_TOKEN is missing'; exit 1; }
+          test -n "${CLOUDFLARE_ACCOUNT_ID:-}" || { echo 'CLOUDFLARE_ACCOUNT_ID is missing'; exit 1; }
+
+      - name: Fetch LoveTravel source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/mirozdanie6v/LoveTravel-.git lovetravel
+          cd lovetravel
+          echo "Deploying $(git rev-parse HEAD)"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Install and verify
+        working-directory: lovetravel
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+          npm run build
+
+      - name: Resolve isolated LoveTravel D1
+        working-directory: lovetravel
+        shell: bash
+        run: |
+          set -euo pipefail
+          if npx wrangler d1 info love-travel-demo --json > /tmp/lovetravel-d1.json 2>/tmp/lovetravel-d1.err; then
+            echo 'Using existing D1 database love-travel-demo.'
+          else
+            echo 'Creating isolated D1 database love-travel-demo.'
+            npx wrangler d1 create love-travel-demo --location apac
+            npx wrangler d1 info love-travel-demo --json > /tmp/lovetravel-d1.json
+          fi
+          db_id=$(jq -r '.uuid // .database_id // .id // empty' /tmp/lovetravel-d1.json)
+          test -n "$db_id" || { echo 'Could not resolve LoveTravel D1 database ID'; cat /tmp/lovetravel-d1.json; exit 1; }
+          node - "$db_id" <<'NODE'
+          const fs = require('fs');
+          const id = process.argv[2];
+          const path = 'wrangler.jsonc';
+          const text = fs.readFileSync(path, 'utf8');
+          if (!text.includes('REPLACE_WITH_LOVETRAVEL_D1_DATABASE_ID')) {
+            throw new Error('Expected LoveTravel D1 placeholder was not found');
+          }
+          fs.writeFileSync(path, text.replace('REPLACE_WITH_LOVETRAVEL_D1_DATABASE_ID', id));
+          NODE
+          echo "Resolved isolated D1 $db_id"
+
+      - name: Migrate and seed LoveTravel D1
+        working-directory: lovetravel
+        run: |
+          npm run db:migrate:remote
+          npm run db:seed:remote
+
+      - name: Deploy LoveTravel Worker
+        working-directory: lovetravel
+        run: npx wrangler deploy
+
+      - name: Attach LoveTravel custom domain
+        shell: bash
+        run: |
+          set -euo pipefail
+          response=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains"             -X PUT             -H 'Content-Type: application/json'             -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}"             --data "{\"hostname\":\"lovetravel.viiversion.com\",\"service\":\"love-travel-demo\",\"zone_id\":\"${VIIVERSION_ZONE_ID}\",\"zone_name\":\"viiversion.com\"}")
+          echo "$response" | jq .
+          test "$(echo "$response" | jq -r '.success')" = "true"
+          test "$(echo "$response" | jq -r '.result.hostname')" = "lovetravel.viiversion.com"
+          test "$(echo "$response" | jq -r '.result.service')" = "love-travel-demo"
+
+      - name: Verify LoveTravel production
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='https://lovetravel.viiversion.com'
+          ok=0
+          for attempt in $(seq 1 24); do
+            home_code=$(curl -L -sS --connect-timeout 5 --max-time 20 -o /tmp/love-home.html -w '%{http_code}' "$base/?deploy=${GITHUB_SHA}" || true)
+            health_code=$(curl -L -sS --connect-timeout 5 --max-time 20 -o /tmp/love-health.json -w '%{http_code}' "$base/api/health" || true)
+            if [ "$home_code" = "200" ] && [ "$health_code" = "200" ]               && grep -Fq 'MAX TOUR' /tmp/love-home.html               && jq -e '.ok == true and .database == "D1"' /tmp/love-health.json >/dev/null; then
+              echo "Verified live $base"
+              ok=1
+              break
+            fi
+            sleep 5
+          done
+          test "$ok" -eq 1
+
+          jar=/tmp/lovetravel-cookies.txt
+          curl -L -fsS -c "$jar" -b "$jar" "$base/api/session" -o /tmp/session.json
+          jq -e '.ok == true and .demoSession == true' /tmp/session.json >/dev/null
+          curl -L -fsS -c "$jar" -b "$jar" "$base/api/tours" -o /tmp/tours.json
+          jq -e '.items | length >= 8' /tmp/tours.json >/dev/null
+          echo 'LoveTravel production smoke passed.'
