@@ -1,0 +1,36 @@
+name: Diagnose MAX TOUR live bundle
+
+on:
+  push:
+    branches: [diag-max-tour-live]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Inspect live bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='https://max-tour.viiversion.com'
+          curl -L -fsS "$base/" -o /tmp/home.html
+          echo '--- LIVE HTML ASSETS ---'
+          grep -oE '/assets/[^"]+\.(js|css)' /tmp/home.html | sort -u || true
+          js=$(grep -oE '/assets/[^"]+\.js' /tmp/home.html | head -n1)
+          test -n "$js"
+          curl -L -fsS "$base$js" -o /tmp/live.js
+          echo '--- FINGERPRINTS ---'
+          for needle in 'is-max-tour-production' 'LocaleProvider' 'Tiếng Việt' 'VIETNAM' 'production-demo-proxy' 'UnifiedAdminTourPage'; do
+            if grep -Fq "$needle" /tmp/live.js; then
+              echo "$needle=YES"
+            else
+              echo "$needle=NO"
+            fi
+          done
+          echo "JS_SHA256=$(sha256sum /tmp/live.js | awk '{print $1}')"
+          echo "JS_BYTES=$(wc -c </tmp/live.js)"
