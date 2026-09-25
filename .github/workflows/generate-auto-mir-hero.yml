@@ -28,28 +28,85 @@ jobs:
           test -n "${CLOUDFLARE_API_TOKEN:-}"
           test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
 
+      - name: Create exact flag references
+        shell: bash
+        run: |
+          set -euo pipefail
+          python <<'PY'
+          import struct,zlib
+
+          def png(path,w,h,pixel):
+              raw=bytearray()
+              for y in range(h):
+                  raw.append(0)
+                  for x in range(w):
+                      raw.extend(pixel(x,y))
+              def chunk(t,d):
+                  return struct.pack(">I",len(d))+t+d+struct.pack(">I",zlib.crc32(t+d)&0xffffffff)
+              data=b"\x89PNG\r\n\x1a\n"+chunk(b'IHDR',struct.pack(">IIBBBBB",w,h,8,2,0,0,0))+chunk(b'IDAT',zlib.compress(bytes(raw),9))+chunk(b'IEND',b'')
+              open(path,'wb').write(data)
+
+          W,H=384,256
+
+          def us(x,y):
+              red=(178,34,52); white=(255,255,255); blue=(60,59,110)
+              stripe=int(y/(H/13))
+              c=red if stripe%2==0 else white
+              if x<W*.4 and y<H*7/13:
+                  c=blue
+                  rows=9; cols=11
+                  for r in range(rows):
+                      yy=(r+.5)*H*7/13/rows
+                      shift=(r%2)*0.5
+                      for k in range(cols):
+                          xx=(k+.5+shift)*W*.4/cols
+                          if (x-xx)**2+(y-yy)**2<5:
+                              return white
+              return c
+
+          def ge(x,y):
+              white=(255,255,255); red=(218,41,28)
+              if abs(x-W/2)<24 or abs(y-H/2)<20:return red
+              centers=[(W*.25,H*.25),(W*.75,H*.25),(W*.25,H*.75),(W*.75,H*.75)]
+              for cx,cy in centers:
+                  if (abs(x-cx)<7 and abs(y-cy)<28) or (abs(y-cy)<7 and abs(x-cx)<28):return red
+              return white
+
+          def ru(x,y):
+              if y<H/3:return (255,255,255)
+              if y<2*H/3:return (0,57,166)
+              return (213,43,30)
+
+          png('/tmp/flag-us.png',W,H,us)
+          png('/tmp/flag-ge.png',W,H,ge)
+          png('/tmp/flag-ru.png',W,H,ru)
+          PY
+
       - name: Generate hero image
         shell: bash
         run: |
           set -euo pipefail
 
-          PROMPT='Create a high-end cinematic automotive website hero background in a dark luxury style. No people. No text, letters, numbers, logos, car emblems, license-plate text, icons, buttons, badges, interface elements or watermark. Three large realistic fabric banners flow diagonally from the upper-right toward the center: the upper banner has a dark blue canton with small white stars and alternating red and white stripes; the middle banner is white with one large red cross and four smaller red crosses; the lower banner has three horizontal bands, white on top, blue in the middle, red on the bottom. Background: subtle New York bridge and skyline on the far left, an old stone hilltop fortress and warm historic city in the center, modern glass skyscrapers on the right, seamlessly blended at dusk. Foreground on glossy wet black pavement: one large black unbranded premium luxury SUV in three-quarter front view, with one silver unbranded premium luxury sedan slightly behind on the right. Warm golden light trails sweep through the middle and connect the three city zones. Premium black, charcoal and gold palette, photorealistic automotive advertising, dramatic studio reflections, elegant realistic fabric, strong depth and atmospheric perspective. Keep the upper-left and left-center intentionally dark and visually calm for existing website copy. Keep the banners mostly upper-right, architecture in the middle, and cars in the lower-right/lower-center. Center all important visual content so responsive cropping works on mobile and desktop.'
+          PROMPT='Use input image 0, input image 1, and input image 2 as the exact visual designs for three separate national fabric flags. Build a high-end cinematic automotive website hero background closely matching a luxury car-import landing-page composition. No people. No text, no letters, no numbers, no logos, no car emblems, no readable license plates, no icons, no buttons, no badges, no interface elements and no watermark. The three flags must remain visually separate and recognizable, flowing as large realistic silk/fabric ribbons diagonally from the upper-right toward center: input image 0 highest, input image 1 directly beneath it, input image 2 beneath that. Do not merge their patterns. Middle background is a seamless cinematic panorama: New York bridge and skyline on the left, historic Tbilisi stone hill and fortress in the center, modern Moscow glass skyscrapers on the right, blended naturally at dusk with warm golden light trails. Foreground on glossy wet black pavement: a large black unbranded premium luxury SUV in three-quarter front view dominates the lower center-left, and a silver unbranded premium luxury sedan stands slightly behind on the lower-right. Premium black, charcoal and champagne-gold color grade, photorealistic expensive automotive advertisement, dramatic realistic reflections and depth. Keep upper-left and left-center dark and visually quiet for existing website copy. Important visual content must stay within the central 75 percent for responsive cropping.'
 
           response=$(curl -sS -w '\n%{http_code}' \
             --request POST \
             --url "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/run/@cf/black-forest-labs/flux-2-klein-9b" \
             --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
             --form "prompt=${PROMPT}" \
+            --form "input_image_0=@/tmp/flag-us.png;type=image/png" \
+            --form "input_image_1=@/tmp/flag-ge.png;type=image/png" \
+            --form "input_image_2=@/tmp/flag-ru.png;type=image/png" \
             --form "width=1536" \
             --form "height=1152" \
-            --form "guidance=4.5" \
-            --form "seed=251987")
+            --form "guidance=5.5" \
+            --form "seed=390271")
 
           code=$(printf '%s' "$response" | tail -n1)
           body=$(printf '%s' "$response" | sed '$d')
 
           if [ "$code" != "200" ]; then
-            echo "Cloudflare FLUX.2 klein 9B failed HTTP $code"
+            echo "Cloudflare FLUX.2 generation failed HTTP $code"
             echo "$body" | jq -c '{success,errors,messages}' || echo "$body"
             exit 1
           fi
@@ -57,12 +114,12 @@ jobs:
           image_b64=$(printf '%s' "$body" | jq -r '.result.image // .image // empty')
           test -n "$image_b64"
           printf '%s' "$image_b64" | base64 -d > /tmp/auto-mir-hero.jpg
-
           file /tmp/auto-mir-hero.jpg
           test -s /tmp/auto-mir-hero.jpg
+
           mkdir -p generated
           base64 -w0 /tmp/auto-mir-hero.jpg > generated/auto-mir-hero.b64
-          printf '%s\n' '@cf/black-forest-labs/flux-2-klein-9b' > generated/auto-mir-hero-model.txt
+          printf '%s\n' '@cf/black-forest-labs/flux-2-klein-9b + 3 exact flag references' > generated/auto-mir-hero-model.txt
 
       - name: Save generated asset payload
         shell: bash
@@ -71,5 +128,5 @@ jobs:
           git config user.name "VIIVERSION Cloudflare AI"
           git config user.email "49186663+mirozdanie6v@users.noreply.github.com"
           git add generated/auto-mir-hero.b64 generated/auto-mir-hero-model.txt
-          git commit -m "Generate AUTO MIR hero asset with Cloudflare AI" || exit 0
+          git commit -m "Generate AUTO MIR hero asset with exact flag references" || exit 0
           git push origin HEAD:ops/auto-mir-hero-gen
