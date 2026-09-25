@@ -40,29 +40,41 @@ jobs:
         run: |
           set -euo pipefail
 
-          PROMPT='High-end cinematic automotive website hero background, dark premium car-import advertising, no flags and no banners. No people. Absolutely no text, letters, numbers, logos, car emblems, readable license plates, icons, buttons, badges, interface elements or watermark. Create a seamless dusk panorama with a subtle New York bridge and skyline on the left, a warm historic stone city with a hilltop fortress inspired by Tbilisi in the center, and modern glass skyscrapers inspired by Moscow City on the right. Foreground on glossy wet black pavement: one large black unbranded premium luxury SUV in three-quarter front view dominates the lower center-left, with one silver unbranded premium luxury sedan slightly behind on the lower-right. Warm champagne-gold light trails sweep horizontally through the middle and connect the three city zones. Photorealistic expensive automotive advertisement, deep blacks, charcoal, subtle gold, dramatic realistic reflections, atmospheric perspective, crisp premium lighting. Keep the upper-right relatively open for decorative fabric overlays. Keep the upper-left and left-center dark and visually calm for existing website copy. Center important architecture and cars so responsive cropping works on mobile and desktop.'
+          PROMPT='Cinematic luxury automotive advertising hero, nightfall, premium dark black and champagne-gold color grade. A seamless international city panorama: a suspension bridge and dense waterfront skyline on the far left, a warm old stone city and hilltop fortress in the center, tall modern glass financial towers on the right. Foreground on wet reflective pavement: a large elegant black futuristic luxury SUV concept car in three-quarter front view, and a silver futuristic premium sedan behind it on the right. No people. No national flags or banners. No visible brand identity. Dark calm negative space in the upper-left and left-center for website copy. Warm gold light trails across the middle, expensive editorial automotive photography, realistic reflections, cinematic atmosphere, high detail, photorealistic.'
+          NEGATIVE='text, letters, numbers, words, logo, emblem, badge, watermark, readable license plate, people, person, human, flags, national symbols, UI, button, icon, menu, distorted car, extra wheels, duplicate vehicle, warped architecture, low quality, cartoon'
 
-          response=$(curl -sS -w '\n%{http_code}' \
+          payload=$(jq -n --arg prompt "$PROMPT" --arg neg "$NEGATIVE" '{
+            prompt:$prompt,
+            negative_prompt:$neg,
+            width:1536,
+            height:1152,
+            num_steps:8,
+            guidance:7.0,
+            seed:722401
+          }')
+
+          code=$(curl -sS -o /tmp/scene-response.bin -w '%{http_code}' \
             --request POST \
-            --url "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/run/@cf/black-forest-labs/flux-2-klein-9b" \
+            --url "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/run/@cf/bytedance/stable-diffusion-xl-lightning" \
             --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-            --form "prompt=${PROMPT}" \
-            --form "width=1536" \
-            --form "height=1152" \
-            --form "guidance=5.0" \
-            --form "seed=722401")
+            --header "Content-Type: application/json" \
+            --data "$payload")
 
-          code=$(printf '%s' "$response" | tail -n1)
-          body=$(printf '%s' "$response" | sed '$d')
           if [ "$code" != "200" ]; then
-            echo "Cloudflare scene generation failed HTTP $code"
-            echo "$body" | jq -c '{success,errors,messages}' || echo "$body"
+            echo "Cloudflare SDXL scene generation failed HTTP $code"
+            head -c 2000 /tmp/scene-response.bin || true
             exit 1
           fi
 
-          image_b64=$(printf '%s' "$body" | jq -r '.result.image // .image // empty')
-          test -n "$image_b64"
-          printf '%s' "$image_b64" | base64 -d > /tmp/auto-mir-scene.jpg
+          if head -c 1 /tmp/scene-response.bin | grep -q '{'; then
+            image_b64=$(jq -r '.result.image // .image // empty' /tmp/scene-response.bin)
+            test -n "$image_b64"
+            printf '%s' "$image_b64" | base64 -d > /tmp/auto-mir-scene.jpg
+          else
+            cp /tmp/scene-response.bin /tmp/auto-mir-scene.jpg
+          fi
+
+          file /tmp/auto-mir-scene.jpg
           test -s /tmp/auto-mir-scene.jpg
 
       - name: Compose exact three-flag ribbons
