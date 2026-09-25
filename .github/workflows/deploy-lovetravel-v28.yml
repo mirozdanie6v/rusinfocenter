@@ -141,7 +141,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          response=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains"             -X PUT             -H 'Content-Type: application/json'             -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}"             --data "{\"hostname\":\"lovetravel.viiversion.com\",\"service\":\"love-travel-v28\",\"zone_id\":\"${VIIVERSION_ZONE_ID}\",\"zone_name\":\"viiversion.com\"}")
+          existing=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains" -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}")
+          domain_id=$(echo "$existing" | jq -r '.result[]? | select(.hostname=="lovetravel.viiversion.com") | .id' | head -n1)
+          if [ -n "$domain_id" ]; then
+            echo "Removing previous LoveTravel domain binding $domain_id"
+            curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains/$domain_id" -X DELETE -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" | jq .
+          fi
+          response=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains" -X PUT -H 'Content-Type: application/json' -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" --data "{\"hostname\":\"lovetravel.viiversion.com\",\"service\":\"love-travel-v28\",\"zone_id\":\"${VIIVERSION_ZONE_ID}\",\"zone_name\":\"viiversion.com\"}")
           echo "$response" | jq .
           test "$(echo "$response" | jq -r '.success')" = "true"
           test "$(echo "$response" | jq -r '.result.hostname')" = "lovetravel.viiversion.com"
