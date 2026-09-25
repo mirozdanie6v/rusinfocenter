@@ -22,104 +22,150 @@ jobs:
         with:
           ref: ops/auto-mir-hero-gen
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install image composer
+        run: python -m pip install --quiet pillow
+
       - name: Validate Cloudflare AI credentials
         run: |
           set -euo pipefail
           test -n "${CLOUDFLARE_API_TOKEN:-}"
           test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
 
-      - name: Create exact flag references
-        shell: bash
-        run: |
-          set -euo pipefail
-          python <<'PY'
-          import struct,zlib
-
-          def png(path,w,h,pixel):
-              raw=bytearray()
-              for y in range(h):
-                  raw.append(0)
-                  for x in range(w):
-                      raw.extend(pixel(x,y))
-              def chunk(t,d):
-                  return struct.pack(">I",len(d))+t+d+struct.pack(">I",zlib.crc32(t+d)&0xffffffff)
-              data=b"\x89PNG\r\n\x1a\n"+chunk(b'IHDR',struct.pack(">IIBBBBB",w,h,8,2,0,0,0))+chunk(b'IDAT',zlib.compress(bytes(raw),9))+chunk(b'IEND',b'')
-              open(path,'wb').write(data)
-
-          W,H=384,256
-
-          def us(x,y):
-              red=(178,34,52); white=(255,255,255); blue=(60,59,110)
-              stripe=int(y/(H/13))
-              c=red if stripe%2==0 else white
-              if x<W*.4 and y<H*7/13:
-                  c=blue
-                  rows=9; cols=11
-                  for r in range(rows):
-                      yy=(r+.5)*H*7/13/rows
-                      shift=(r%2)*0.5
-                      for k in range(cols):
-                          xx=(k+.5+shift)*W*.4/cols
-                          if (x-xx)**2+(y-yy)**2<5:
-                              return white
-              return c
-
-          def ge(x,y):
-              white=(255,255,255); red=(218,41,28)
-              if abs(x-W/2)<24 or abs(y-H/2)<20:return red
-              centers=[(W*.25,H*.25),(W*.75,H*.25),(W*.25,H*.75),(W*.75,H*.75)]
-              for cx,cy in centers:
-                  if (abs(x-cx)<7 and abs(y-cy)<28) or (abs(y-cy)<7 and abs(x-cx)<28):return red
-              return white
-
-          def ru(x,y):
-              if y<H/3:return (255,255,255)
-              if y<2*H/3:return (0,57,166)
-              return (213,43,30)
-
-          png('/tmp/flag-us.png',W,H,us)
-          png('/tmp/flag-ge.png',W,H,ge)
-          png('/tmp/flag-ru.png',W,H,ru)
-          PY
-
-      - name: Generate hero image
+      - name: Generate clean automotive scene
         shell: bash
         run: |
           set -euo pipefail
 
-          PROMPT='Use input image 0, input image 1, and input image 2 as the exact visual designs for three separate national fabric flags. Build a high-end cinematic automotive website hero background closely matching a luxury car-import landing-page composition. No people. No text, no letters, no numbers, no logos, no car emblems, no readable license plates, no icons, no buttons, no badges, no interface elements and no watermark. The three flags must remain visually separate and recognizable, flowing as large realistic silk/fabric ribbons diagonally from the upper-right toward center: input image 0 highest, input image 1 directly beneath it, input image 2 beneath that. Do not merge their patterns. Middle background is a seamless cinematic panorama: New York bridge and skyline on the left, historic Tbilisi stone hill and fortress in the center, modern Moscow glass skyscrapers on the right, blended naturally at dusk with warm golden light trails. Foreground on glossy wet black pavement: a large black unbranded premium luxury SUV in three-quarter front view dominates the lower center-left, and a silver unbranded premium luxury sedan stands slightly behind on the lower-right. Premium black, charcoal and champagne-gold color grade, photorealistic expensive automotive advertisement, dramatic realistic reflections and depth. Keep upper-left and left-center dark and visually quiet for existing website copy. Important visual content must stay within the central 75 percent for responsive cropping.'
+          PROMPT='High-end cinematic automotive website hero background, dark premium car-import advertising, no flags and no banners. No people. Absolutely no text, letters, numbers, logos, car emblems, readable license plates, icons, buttons, badges, interface elements or watermark. Create a seamless dusk panorama with a subtle New York bridge and skyline on the left, a warm historic stone city with a hilltop fortress inspired by Tbilisi in the center, and modern glass skyscrapers inspired by Moscow City on the right. Foreground on glossy wet black pavement: one large black unbranded premium luxury SUV in three-quarter front view dominates the lower center-left, with one silver unbranded premium luxury sedan slightly behind on the lower-right. Warm champagne-gold light trails sweep horizontally through the middle and connect the three city zones. Photorealistic expensive automotive advertisement, deep blacks, charcoal, subtle gold, dramatic realistic reflections, atmospheric perspective, crisp premium lighting. Keep the upper-right relatively open for decorative fabric overlays. Keep the upper-left and left-center dark and visually calm for existing website copy. Center important architecture and cars so responsive cropping works on mobile and desktop.'
 
           response=$(curl -sS -w '\n%{http_code}' \
             --request POST \
             --url "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/run/@cf/black-forest-labs/flux-2-klein-9b" \
             --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
             --form "prompt=${PROMPT}" \
-            --form "input_image_0=@/tmp/flag-us.png;type=image/png" \
-            --form "input_image_1=@/tmp/flag-ge.png;type=image/png" \
-            --form "input_image_2=@/tmp/flag-ru.png;type=image/png" \
             --form "width=1536" \
             --form "height=1152" \
-            --form "guidance=5.5" \
-            --form "seed=390271")
+            --form "guidance=5.0" \
+            --form "seed=722401")
 
           code=$(printf '%s' "$response" | tail -n1)
           body=$(printf '%s' "$response" | sed '$d')
-
           if [ "$code" != "200" ]; then
-            echo "Cloudflare FLUX.2 generation failed HTTP $code"
+            echo "Cloudflare scene generation failed HTTP $code"
             echo "$body" | jq -c '{success,errors,messages}' || echo "$body"
             exit 1
           fi
 
           image_b64=$(printf '%s' "$body" | jq -r '.result.image // .image // empty')
           test -n "$image_b64"
-          printf '%s' "$image_b64" | base64 -d > /tmp/auto-mir-hero.jpg
-          file /tmp/auto-mir-hero.jpg
-          test -s /tmp/auto-mir-hero.jpg
+          printf '%s' "$image_b64" | base64 -d > /tmp/auto-mir-scene.jpg
+          test -s /tmp/auto-mir-scene.jpg
+
+      - name: Compose exact three-flag ribbons
+        shell: bash
+        run: |
+          set -euo pipefail
+          python <<'PY'
+          from PIL import Image, ImageDraw, ImageFilter, ImageEnhance
+          import math, os
+
+          base=Image.open('/tmp/auto-mir-scene.jpg').convert('RGB').resize((1536,1152),Image.Resampling.LANCZOS)
+
+          def flag_us(w=900,h=170):
+              im=Image.new('RGB',(w,h),'white'); d=ImageDraw.Draw(im)
+              red=(181,37,52); blue=(44,59,108)
+              sh=h/13
+              for i in range(13):
+                  if i%2==0:d.rectangle((0,round(i*sh),w,round((i+1)*sh)),fill=red)
+              cw,ch=int(w*.40),int(sh*7)
+              d.rectangle((0,0,cw,ch),fill=blue)
+              rows=9
+              for r in range(rows):
+                  n=6 if r%2==0 else 5
+                  y=(r+.5)*ch/rows
+                  for k in range(n):
+                      x=(k+.5)*cw/n
+                      rr=max(2,int(h*.008))
+                      d.ellipse((x-rr,y-rr,x+rr,y+rr),fill='white')
+              return im
+
+          def flag_ge(w=900,h=170):
+              im=Image.new('RGB',(w,h),'white'); d=ImageDraw.Draw(im); red=(205,40,45)
+              vw=max(18,int(w*.035)); hh=max(16,int(h*.13))
+              d.rectangle((w//2-vw//2,0,w//2+vw//2,h),fill=red)
+              d.rectangle((0,h//2-hh//2,w,h//2+hh//2),fill=red)
+              centers=[(w*.25,h*.25),(w*.75,h*.25),(w*.25,h*.75),(w*.75,h*.75)]
+              for cx,cy in centers:
+                  sw=max(7,int(w*.012)); sl=max(17,int(h*.18))
+                  d.rectangle((cx-sw/2,cy-sl/2,cx+sw/2,cy+sl/2),fill=red)
+                  d.rectangle((cx-sl,cy-sw/2,cx+sl,cy+sw/2),fill=red)
+              return im
+
+          def flag_ru(w=900,h=170):
+              im=Image.new('RGB',(w,h),'white'); d=ImageDraw.Draw(im)
+              d.rectangle((0,h/3,w,2*h/3),fill=(28,75,142))
+              d.rectangle((0,2*h/3,w,h),fill=(190,45,55))
+              return im
+
+          def fabric(flag, amplitude=9, phase=0.0):
+              flag=flag.convert('RGBA')
+              w,h=flag.size
+              out=Image.new('RGBA',(w,h+40),(0,0,0,0))
+              # strip-wise wave + light/shadow modulation
+              strip=10
+              for x in range(0,w,strip):
+                  sl=flag.crop((x,0,min(x+strip,w),h))
+                  y=int(18 + math.sin(x/72+phase)*amplitude)
+                  shade=.76 + .24*(math.sin(x/58+phase)+1)/2
+                  sl=ImageEnhance.Brightness(sl).enhance(shade)
+                  out.alpha_composite(sl,(x,y))
+              return out
+
+          def place(canvas, flag, center, angle, scale=1.0, opacity=238):
+              f=fabric(flag,amplitude=10,phase=center[1]/70)
+              if scale!=1:
+                  f=f.resize((int(f.width*scale),int(f.height*scale)),Image.Resampling.LANCZOS)
+              f.putalpha(f.getchannel('A').point(lambda p:int(p*opacity/255)))
+              f=f.rotate(angle,resample=Image.Resampling.BICUBIC,expand=True)
+              shadow=Image.new('RGBA',f.size,(0,0,0,0)); shadow.putalpha(f.getchannel('A'))
+              shadow=shadow.filter(ImageFilter.GaussianBlur(14))
+              x=int(center[0]-f.width/2); y=int(center[1]-f.height/2)
+              canvas.alpha_composite(shadow,(x+8,y+14))
+              canvas.alpha_composite(f,(x,y))
+
+          canvas=base.convert('RGBA')
+
+          # Subtle warm glow where ribbons cross the skyline.
+          glow=Image.new('RGBA',canvas.size,(0,0,0,0))
+          gd=ImageDraw.Draw(glow)
+          gd.ellipse((690,120,1640,700),fill=(219,164,98,24))
+          glow=glow.filter(ImageFilter.GaussianBlur(55))
+          canvas=Image.alpha_composite(canvas,glow)
+
+          # Three separate ribbons in the same order as the visual reference.
+          place(canvas,flag_us(),center=(1160,205),angle=-18,scale=1.06,opacity=245)
+          place(canvas,flag_ge(),center=(1205,350),angle=-15,scale=1.00,opacity=238)
+          place(canvas,flag_ru(),center=(1240,500),angle=-12,scale=.96,opacity=235)
+
+          # Dark left-side readability veil, preserving current UI positions.
+          veil=Image.new('RGBA',canvas.size,(0,0,0,0)); px=veil.load()
+          for x in range(900):
+              a=int(150*(1-x/900)**1.7)
+              for y in range(1152): px[x,y]=(4,7,10,a)
+          canvas=Image.alpha_composite(canvas,veil)
+
+          out=canvas.convert('RGB')
+          out.save('/tmp/auto-mir-hero.jpg','JPEG',quality=88,optimize=True,progressive=True)
+          print('final',out.size,os.path.getsize('/tmp/auto-mir-hero.jpg'))
+          PY
 
           mkdir -p generated
           base64 -w0 /tmp/auto-mir-hero.jpg > generated/auto-mir-hero.b64
-          printf '%s\n' '@cf/black-forest-labs/flux-2-klein-9b + 3 exact flag references' > generated/auto-mir-hero-model.txt
+          printf '%s\n' 'Cloudflare FLUX.2 scene + deterministic 3-flag compositor' > generated/auto-mir-hero-model.txt
 
       - name: Save generated asset payload
         shell: bash
@@ -128,5 +174,5 @@ jobs:
           git config user.name "VIIVERSION Cloudflare AI"
           git config user.email "49186663+mirozdanie6v@users.noreply.github.com"
           git add generated/auto-mir-hero.b64 generated/auto-mir-hero-model.txt
-          git commit -m "Generate AUTO MIR hero asset with exact flag references" || exit 0
+          git commit -m "Generate composed AUTO MIR hero asset" || exit 0
           git push origin HEAD:ops/auto-mir-hero-gen
