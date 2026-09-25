@@ -16,35 +16,22 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Query integration endpoints
+      - name: Query selected Bókun product data
         shell: bash
         run: |
-          set -u
+          set -euo pipefail
           base="https://integration.viiversion.com"
-          mkdir -p out
-          fetch() {
-            name="$1"
-            url="$2"
-            code=$(curl -sS -L --connect-timeout 10 --max-time 30 -o "out/\${name}.body" -w '%{http_code}' "$url" || true)
-            printf '%s\n' "$code" > "out/\${name}.status"
-          }
-          fetch status "$base/api/bokun/status?vendorId=137689"
-          fetch products "$base/api/bokun/products?vendorId=137689"
-          fetch availability_1287578 "$base/api/bokun/availability?vendorId=137689&productId=1287578&start=2026-09-26&end=2026-10-10"
-          fetch availability_1287580 "$base/api/bokun/availability?vendorId=137689&productId=1287580&start=2026-09-26&end=2026-10-10"
+          vendor="137689"
 
-          {
-            for name in status products availability_1287578 availability_1287580; do
-              echo "===== $name ====="
-              echo "HTTP $(cat out/\${name}.status)"
-              cat "out/\${name}.body"
-              echo
-            done
-          } > out/report.txt
+          echo '=== STATUS ==='
+          curl -fsS "$base/api/bokun/status?vendorId=$vendor" | jq .
 
-      - name: Upload diagnostic artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: bokun-live-diagnostic
-          path: out/
-          retention-days: 1
+          for product in 1287578 1287580; do
+            echo "=== PRODUCT $product ==="
+            curl -fsS "$base/api/bokun/product?vendorId=$vendor&productId=$product" \
+              | jq 'del(.vendor)'
+
+            echo "=== AVAILABILITY $product ==="
+            curl -fsS "$base/api/bokun/availability?vendorId=$vendor&productId=$product&start=2026-09-26&end=2026-10-10&currency=USD" \
+              | jq '{entries:length, dates:[.[].localizedDate], samples:(.[0:2])}'
+          done
