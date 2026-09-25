@@ -1,0 +1,50 @@
+name: Check Bókun Live Integration Data
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.check-bokun-live-data'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Query integration endpoints
+        shell: bash
+        run: |
+          set -u
+          base="https://integration.viiversion.com"
+          mkdir -p out
+          fetch() {
+            name="$1"
+            url="$2"
+            code=$(curl -sS -L --connect-timeout 10 --max-time 30 -o "out/\${name}.body" -w '%{http_code}' "$url" || true)
+            printf '%s\n' "$code" > "out/\${name}.status"
+          }
+          fetch status "$base/api/bokun/status?vendorId=137689"
+          fetch products "$base/api/bokun/products?vendorId=137689"
+          fetch availability_1287578 "$base/api/bokun/availability?vendorId=137689&productId=1287578&start=2026-09-26&end=2026-10-10"
+          fetch availability_1287580 "$base/api/bokun/availability?vendorId=137689&productId=1287580&start=2026-09-26&end=2026-10-10"
+
+          {
+            for name in status products availability_1287578 availability_1287580; do
+              echo "===== $name ====="
+              echo "HTTP $(cat out/\${name}.status)"
+              cat "out/\${name}.body"
+              echo
+            done
+          } > out/report.txt
+
+      - name: Upload diagnostic artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bokun-live-diagnostic
+          path: out/
+          retention-days: 1
