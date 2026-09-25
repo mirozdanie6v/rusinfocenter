@@ -64,20 +64,30 @@ jobs:
           PROMPT='Preserve the exact camera composition, relative object positions and visual hierarchy of the input reference image: large flowing United States flag in the upper-right, Georgian flag immediately below it, Russian tricolor below that; New York bridge and skyline at the left background, old Tbilisi hill and fortress in the center background, modern Moscow skyline at the right background; a large glossy black premium luxury SUV in the lower foreground and a silver premium luxury sedan slightly behind on the right. Reconstruct this as one clean full-bleed cinematic photographic automotive hero background. Remove the smartphone frame and every interface element completely. Remove and reconstruct over all typography, captions, logos, icons, menus, controls, cards, buttons and badges so only continuous photographic scenery remains beneath them. No people. Keep the same dark luxury black-and-champagne lighting, wet pavement reflections, warm gold light trails, realistic fabric flags, photorealistic architecture and premium automotive-advertising finish. Leave the upper-left and left-center darker and visually calm for website text overlay. Do not add any new writing or graphic symbols.'
           NEGATIVE='text, typography, letters, words, numbers, logo, watermark, brand emblem, badge, icon, button, menu, navigation, UI, interface, smartphone frame, phone bezel, status bar, card, caption, readable license plate, people, person, extra car, duplicate car, distorted wheels, deformed vehicle, merged flags, wrong flag pattern, cartoon, illustration, low quality'
 
-          REF=$(cat /tmp/reference-normalized.b64)
-          payload=$(jq -n             --arg prompt "$PROMPT"             --arg neg "$NEGATIVE"             --arg image "$REF"             '{
+          jq -n \
+            --arg prompt "$PROMPT" \
+            --arg neg "$NEGATIVE" \
+            --rawfile image /tmp/reference-normalized.b64 \
+            '{
               prompt:$prompt,
               negative_prompt:$neg,
-              image_b64:$image,
+              image_b64:($image|gsub("\\n";"")),
               width:768,
               height:1365,
               num_steps:20,
               strength:0.42,
               guidance:8.0,
               seed:942731
-            }')
+            }' > /tmp/img2img-payload.json
 
-          code=$(curl -sS -o /tmp/hero-response.bin -w '%{http_code}'             --request POST             --url "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/run/@cf/stabilityai/stable-diffusion-xl-base-1.0"             --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}"             --header "Content-Type: application/json"             --data "$payload")
+          echo "img2img payload bytes: $(wc -c < /tmp/img2img-payload.json)"
+
+          code=$(curl -sS -o /tmp/hero-response.bin -w '%{http_code}' \
+            --request POST \
+            --url "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/run/@cf/stabilityai/stable-diffusion-xl-base-1.0" \
+            --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            --header "Content-Type: application/json" \
+            --data-binary @/tmp/img2img-payload.json)
 
           if [ "$code" != "200" ]; then
             echo "Cloudflare SDXL img2img failed HTTP $code"
