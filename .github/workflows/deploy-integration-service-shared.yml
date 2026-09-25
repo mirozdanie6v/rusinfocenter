@@ -74,6 +74,25 @@ jobs:
           set -euo pipefail
           npx wrangler deploy --config wrangler.shared.jsonc
 
+      - name: Ensure internal integration secrets
+        working-directory: viiversion/integration-service
+        shell: bash
+        run: |
+          set -euo pipefail
+          existing="$(npx wrangler secret list --config wrangler.shared.jsonc)"
+          ensure_secret() {
+            name="$1"
+            value="$2"
+            if echo "$existing" | jq -e --arg name "$name" 'map(.name) | index($name) != null' >/dev/null; then
+              echo "$name already configured."
+            else
+              printf '%s' "$value" | npx wrangler secret put "$name" --config wrangler.shared.jsonc
+              echo "$name configured."
+            fi
+          }
+          ensure_secret DATA_ENCRYPTION_KEY "$(openssl rand -hex 32)"
+          ensure_secret INTEGRATION_ADMIN_TOKEN "$(openssl rand -hex 32)"
+
       - name: List configured Worker secret names
         working-directory: viiversion/integration-service
         shell: bash
