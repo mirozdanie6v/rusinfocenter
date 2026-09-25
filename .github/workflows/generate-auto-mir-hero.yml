@@ -17,6 +17,7 @@ jobs:
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
     steps:
       - uses: actions/checkout@v5
         with:
@@ -26,7 +27,7 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install image composer
+      - name: Install image tools
         run: python -m pip install --quiet pillow
 
       - name: Validate Cloudflare AI credentials
@@ -35,149 +36,111 @@ jobs:
           test -n "${CLOUDFLARE_API_TOKEN:-}"
           test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
 
-      - name: Generate clean automotive scene
+      - name: Reconstruct exact visual reference
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat ops/ref-parts/00.txt ops/ref-parts/01.txt ops/ref-parts/02.txt ops/ref-parts/03.txt ops/ref-parts/04.txt ops/ref-parts/05.txt > /tmp/reference.b64
+          base64 -d /tmp/reference.b64 > /tmp/reference.jpg
+          file /tmp/reference.jpg
+          test -s /tmp/reference.jpg
+          python <<'PY'
+          from PIL import Image
+          im=Image.open('/tmp/reference.jpg').convert('RGB')
+          print('reference:', im.size)
+          # Keep the full reference composition, only normalize it for img2img.
+          target=(768,1365)
+          im=im.resize(target,Image.Resampling.LANCZOS)
+          im.save('/tmp/reference-normalized.jpg','JPEG',quality=94)
+          print('normalized:',target)
+          PY
+          base64 -w0 /tmp/reference-normalized.jpg > /tmp/reference-normalized.b64
+
+      - name: Rebuild clean hero from reference with Cloudflare SDXL
         shell: bash
         run: |
           set -euo pipefail
 
-          PROMPT='Cinematic luxury automotive advertising hero, nightfall, premium dark black and champagne-gold color grade. A seamless international city panorama: a suspension bridge and dense waterfront skyline on the far left, a warm old stone city and hilltop fortress in the center, tall modern glass financial towers on the right. Foreground on wet reflective pavement: a large elegant black futuristic luxury SUV concept car in three-quarter front view, and a silver futuristic premium sedan behind it on the right. No people. No national flags or banners. No visible brand identity. Dark calm negative space in the upper-left and left-center for website copy. Warm gold light trails across the middle, expensive editorial automotive photography, realistic reflections, cinematic atmosphere, high detail, photorealistic.'
-          NEGATIVE='text, letters, numbers, words, logo, emblem, badge, watermark, readable license plate, people, person, human, flags, national symbols, UI, button, icon, menu, distorted car, extra wheels, duplicate vehicle, warped architecture, low quality, cartoon'
+          PROMPT='Preserve the exact camera composition, relative object positions and visual hierarchy of the input reference image: large flowing United States flag in the upper-right, Georgian flag immediately below it, Russian tricolor below that; New York bridge and skyline at the left background, old Tbilisi hill and fortress in the center background, modern Moscow skyline at the right background; a large glossy black premium luxury SUV in the lower foreground and a silver premium luxury sedan slightly behind on the right. Reconstruct this as one clean full-bleed cinematic photographic automotive hero background. Remove the smartphone frame and every interface element completely. Remove and reconstruct over all typography, captions, logos, icons, menus, controls, cards, buttons and badges so only continuous photographic scenery remains beneath them. No people. Keep the same dark luxury black-and-champagne lighting, wet pavement reflections, warm gold light trails, realistic fabric flags, photorealistic architecture and premium automotive-advertising finish. Leave the upper-left and left-center darker and visually calm for website text overlay. Do not add any new writing or graphic symbols.'
+          NEGATIVE='text, typography, letters, words, numbers, logo, watermark, brand emblem, badge, icon, button, menu, navigation, UI, interface, smartphone frame, phone bezel, status bar, card, caption, readable license plate, people, person, extra car, duplicate car, distorted wheels, deformed vehicle, merged flags, wrong flag pattern, cartoon, illustration, low quality'
 
-          payload=$(jq -n --arg prompt "$PROMPT" --arg neg "$NEGATIVE" '{
-            prompt:$prompt,
-            negative_prompt:$neg,
-            width:1536,
-            height:1152,
-            num_steps:8,
-            guidance:7.0,
-            seed:722401
-          }')
+          REF=$(cat /tmp/reference-normalized.b64)
+          payload=$(jq -n             --arg prompt "$PROMPT"             --arg neg "$NEGATIVE"             --arg image "$REF"             '{
+              prompt:$prompt,
+              negative_prompt:$neg,
+              image_b64:$image,
+              width:768,
+              height:1365,
+              num_steps:20,
+              strength:0.42,
+              guidance:8.0,
+              seed:942731
+            }')
 
-          code=$(curl -sS -o /tmp/scene-response.bin -w '%{http_code}' \
-            --request POST \
-            --url "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/run/@cf/bytedance/stable-diffusion-xl-lightning" \
-            --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-            --header "Content-Type: application/json" \
-            --data "$payload")
+          code=$(curl -sS -o /tmp/hero-response.bin -w '%{http_code}'             --request POST             --url "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/run/@cf/stabilityai/stable-diffusion-xl-base-1.0"             --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}"             --header "Content-Type: application/json"             --data "$payload")
 
           if [ "$code" != "200" ]; then
-            echo "Cloudflare SDXL scene generation failed HTTP $code"
-            head -c 2000 /tmp/scene-response.bin || true
+            echo "Cloudflare SDXL img2img failed HTTP $code"
+            head -c 3000 /tmp/hero-response.bin || true
             exit 1
           fi
 
-          if head -c 1 /tmp/scene-response.bin | grep -q '{'; then
-            image_b64=$(jq -r '.result.image // .image // empty' /tmp/scene-response.bin)
+          if head -c 1 /tmp/hero-response.bin | grep -q '{'; then
+            image_b64=$(jq -r '.result.image // .image // empty' /tmp/hero-response.bin)
             test -n "$image_b64"
-            printf '%s' "$image_b64" | base64 -d > /tmp/auto-mir-scene.jpg
+            printf '%s' "$image_b64" | base64 -d > /tmp/auto-mir-hero-raw.jpg
           else
-            cp /tmp/scene-response.bin /tmp/auto-mir-scene.jpg
+            cp /tmp/hero-response.bin /tmp/auto-mir-hero-raw.jpg
           fi
 
-          file /tmp/auto-mir-scene.jpg
-          test -s /tmp/auto-mir-scene.jpg
+          file /tmp/auto-mir-hero-raw.jpg
+          test -s /tmp/auto-mir-hero-raw.jpg
 
-      - name: Compose exact three-flag ribbons
+      - name: Normalize production hero asset
         shell: bash
         run: |
           set -euo pipefail
           python <<'PY'
-          from PIL import Image, ImageDraw, ImageFilter, ImageEnhance
-          import math, os
+          from PIL import Image,ImageEnhance,ImageDraw,ImageFilter
+          import os
+          im=Image.open('/tmp/auto-mir-hero-raw.jpg').convert('RGB')
 
-          base=Image.open('/tmp/auto-mir-scene.jpg').convert('RGB').resize((1536,1152),Image.Resampling.LANCZOS)
+          # Normalize to a high-quality portrait master close to the supplied reference.
+          target=(1080,1440)
+          src_ratio=im.width/im.height
+          dst_ratio=target[0]/target[1]
+          if src_ratio>dst_ratio:
+              nw=int(im.height*dst_ratio)
+              x=(im.width-nw)//2
+              im=im.crop((x,0,x+nw,im.height))
+          else:
+              nh=int(im.width/dst_ratio)
+              y=max(0,(im.height-nh)//2)
+              im=im.crop((0,y,im.width,y+nh))
+          im=im.resize(target,Image.Resampling.LANCZOS)
 
-          def flag_us(w=900,h=170):
-              im=Image.new('RGB',(w,h),'white'); d=ImageDraw.Draw(im)
-              red=(181,37,52); blue=(44,59,108)
-              sh=h/13
-              for i in range(13):
-                  if i%2==0:d.rectangle((0,round(i*sh),w,round((i+1)*sh)),fill=red)
-              cw,ch=int(w*.40),int(sh*7)
-              d.rectangle((0,0,cw,ch),fill=blue)
-              rows=9
-              for r in range(rows):
-                  n=6 if r%2==0 else 5
-                  y=(r+.5)*ch/rows
-                  for k in range(n):
-                      x=(k+.5)*cw/n
-                      rr=max(2,int(h*.008))
-                      d.ellipse((x-rr,y-rr,x+rr,y+rr),fill='white')
-              return im
+          # Maintain the dark luxury grade without changing composition.
+          im=ImageEnhance.Contrast(im).enhance(1.05)
+          im=ImageEnhance.Color(im).enhance(1.03)
 
-          def flag_ge(w=900,h=170):
-              im=Image.new('RGB',(w,h),'white'); d=ImageDraw.Draw(im); red=(205,40,45)
-              vw=max(18,int(w*.035)); hh=max(16,int(h*.13))
-              d.rectangle((w//2-vw//2,0,w//2+vw//2,h),fill=red)
-              d.rectangle((0,h//2-hh//2,w,h//2+hh//2),fill=red)
-              centers=[(w*.25,h*.25),(w*.75,h*.25),(w*.25,h*.75),(w*.75,h*.75)]
-              for cx,cy in centers:
-                  sw=max(7,int(w*.012)); sl=max(17,int(h*.18))
-                  d.rectangle((cx-sw/2,cy-sl/2,cx+sw/2,cy+sl/2),fill=red)
-                  d.rectangle((cx-sl,cy-sw/2,cx+sl,cy+sw/2),fill=red)
-              return im
-
-          def flag_ru(w=900,h=170):
-              im=Image.new('RGB',(w,h),'white'); d=ImageDraw.Draw(im)
-              d.rectangle((0,h/3,w,2*h/3),fill=(28,75,142))
-              d.rectangle((0,2*h/3,w,h),fill=(190,45,55))
-              return im
-
-          def fabric(flag, amplitude=9, phase=0.0):
-              flag=flag.convert('RGBA')
-              w,h=flag.size
-              out=Image.new('RGBA',(w,h+40),(0,0,0,0))
-              # strip-wise wave + light/shadow modulation
-              strip=10
-              for x in range(0,w,strip):
-                  sl=flag.crop((x,0,min(x+strip,w),h))
-                  y=int(18 + math.sin(x/72+phase)*amplitude)
-                  shade=.76 + .24*(math.sin(x/58+phase)+1)/2
-                  sl=ImageEnhance.Brightness(sl).enhance(shade)
-                  out.alpha_composite(sl,(x,y))
-              return out
-
-          def place(canvas, flag, center, angle, scale=1.0, opacity=238):
-              f=fabric(flag,amplitude=10,phase=center[1]/70)
-              if scale!=1:
-                  f=f.resize((int(f.width*scale),int(f.height*scale)),Image.Resampling.LANCZOS)
-              f.putalpha(f.getchannel('A').point(lambda p:int(p*opacity/255)))
-              f=f.rotate(angle,resample=Image.Resampling.BICUBIC,expand=True)
-              shadow=Image.new('RGBA',f.size,(0,0,0,0)); shadow.putalpha(f.getchannel('A'))
-              shadow=shadow.filter(ImageFilter.GaussianBlur(14))
-              x=int(center[0]-f.width/2); y=int(center[1]-f.height/2)
-              canvas.alpha_composite(shadow,(x+8,y+14))
-              canvas.alpha_composite(f,(x,y))
-
-          canvas=base.convert('RGBA')
-
-          # Subtle warm glow where ribbons cross the skyline.
-          glow=Image.new('RGBA',canvas.size,(0,0,0,0))
-          gd=ImageDraw.Draw(glow)
-          gd.ellipse((690,120,1640,700),fill=(219,164,98,24))
-          glow=glow.filter(ImageFilter.GaussianBlur(55))
-          canvas=Image.alpha_composite(canvas,glow)
-
-          # Three separate ribbons in the same order as the visual reference.
-          place(canvas,flag_us(),center=(1160,205),angle=-18,scale=1.06,opacity=245)
-          place(canvas,flag_ge(),center=(1205,350),angle=-15,scale=1.00,opacity=238)
-          place(canvas,flag_ru(),center=(1240,500),angle=-12,scale=.96,opacity=235)
-
-          # Dark left-side readability veil, preserving current UI positions.
-          veil=Image.new('RGBA',canvas.size,(0,0,0,0)); px=veil.load()
-          for x in range(900):
-              a=int(150*(1-x/900)**1.7)
-              for y in range(1152): px[x,y]=(4,7,10,a)
-          canvas=Image.alpha_composite(canvas,veil)
-
-          out=canvas.convert('RGB')
+          # Soft left readability veil only; no UI is baked into the image.
+          rgba=im.convert('RGBA')
+          veil=Image.new('RGBA',target,(0,0,0,0))
+          px=veil.load()
+          for x in range(target[0]):
+              a=max(0,int(72*(1-x/target[0])**2.2))
+              if a:
+                  for y in range(target[1]):
+                      px[x,y]=(4,7,10,a)
+          rgba=Image.alpha_composite(rgba,veil)
+          out=rgba.convert('RGB')
           out.save('/tmp/auto-mir-hero.jpg','JPEG',quality=88,optimize=True,progressive=True)
-          print('final',out.size,os.path.getsize('/tmp/auto-mir-hero.jpg'))
+          print('production hero:',out.size,os.path.getsize('/tmp/auto-mir-hero.jpg'))
           PY
 
           mkdir -p generated
           base64 -w0 /tmp/auto-mir-hero.jpg > generated/auto-mir-hero.b64
-          printf '%s\n' 'Cloudflare FLUX.2 scene + deterministic 3-flag compositor' > generated/auto-mir-hero-model.txt
+          printf '%s\n' 'Cloudflare SDXL img2img from supplied AUTO MIR reference' > generated/auto-mir-hero-model.txt
 
       - name: Save generated asset payload
         shell: bash
@@ -186,5 +149,5 @@ jobs:
           git config user.name "VIIVERSION Cloudflare AI"
           git config user.email "49186663+mirozdanie6v@users.noreply.github.com"
           git add generated/auto-mir-hero.b64 generated/auto-mir-hero-model.txt
-          git commit -m "Generate composed AUTO MIR hero asset" || exit 0
+          git commit -m "Generate AUTO MIR hero from exact visual reference" || exit 0
           git push origin HEAD:ops/auto-mir-hero-gen
