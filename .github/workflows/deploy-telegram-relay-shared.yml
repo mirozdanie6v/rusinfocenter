@@ -1,0 +1,89 @@
+name: Deploy AUTO WORLD Telegram relay via VIIVERSION
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.deploy-telegram-relay-shared'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: autoworld-telegram-relay-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      VIIVERSION_ZONE_ID: 56fa9423ef85e05559f453af43ec400f
+      RELAY_SERVICE: viiversion-telegram-relay
+      RELAY_HOSTNAME: integration-telegram.viiversion.com
+      TELEGRAM_BOT_TOKEN: ${{ secrets.AUTO_SALE_TELEGRAM_BOT_TOKEN }}
+
+    steps:
+      - name: Checkout relay source
+        uses: actions/checkout@v5
+        with:
+          repository: mirozdanie6v/uniq-smart-rent
+          ref: prototype/auto-sale-usa
+          path: auto-sale
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Install and test relay
+        working-directory: auto-sale/cloudflare/telegram-relay
+        run: |
+          set -euo pipefail
+          npm install --no-audit --no-fund
+          npm test
+
+      - name: Prepare isolated Wrangler config
+        working-directory: auto-sale/cloudflare/telegram-relay
+        run: |
+          cat > wrangler.production.toml <<'EOF'
+          name = "viiversion-telegram-relay"
+          main = "src/index.js"
+          compatibility_date = "2026-09-26"
+          workers_dev = true
+          EOF
+
+      - name: Deploy Worker
+        working-directory: auto-sale/cloudflare/telegram-relay
+        run: npx wrangler deploy --config wrangler.production.toml
+
+      - name: Require Telegram token
+        run: test -n "$TELEGRAM_BOT_TOKEN"
+
+      - name: Set Telegram Worker secret
+        working-directory: auto-sale/cloudflare/telegram-relay
+        run: printf '%s' "$TELEGRAM_BOT_TOKEN" | npx wrangler secret put TELEGRAM_BOT_TOKEN --config wrangler.production.toml
+
+      - name: Attach VIIVERSION custom domain
+        shell: bash
+        run: |
+          set -euo pipefail
+          response=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains"             -X PUT -H 'Content-Type: application/json'             -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}"             --data "{\"hostname\":\"${RELAY_HOSTNAME}\",\"service\":\"${RELAY_SERVICE}\",\"zone_id\":\"${VIIVERSION_ZONE_ID}\",\"zone_name\":\"viiversion.com\"}")
+          echo "$response" | jq .
+          test "$(echo "$response" | jq -r '.success')" = "true"
+
+      - name: Verify relay health
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 24); do
+            code=$(curl -sS --connect-timeout 5 --max-time 15 -o /tmp/health.json -w '%{http_code}' "https://${RELAY_HOSTNAME}/telegram/health" || true)
+            if [ "$code" = "200" ] && jq -e '.ok == true' /tmp/health.json >/dev/null; then
+              cat /tmp/health.json
+              echo "TELEGRAM_RELAY_OK"
+              exit 0
+            fi
+            sleep 5
+          done
+          cat /tmp/health.json 2>/dev/null || true
+          exit 1
