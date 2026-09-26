@@ -1,0 +1,108 @@
+name: Create AutoWorld alias
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.create-autoworld-alias'
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      VIIVERSION_ZONE_ID: 56fa9423ef85e05559f453af43ec400f
+      ALIAS_HOST: autoworld.viiversion.com
+      TARGET_HOST: auto-sale-demo.viiversion.com
+      SERVICE_NAME: autoworld-alias
+    steps:
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Require Cloudflare credentials
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}" || { echo 'CLOUDFLARE_API_TOKEN is missing'; exit 1; }
+          test -n "${CLOUDFLARE_ACCOUNT_ID:-}" || { echo 'CLOUDFLARE_ACCOUNT_ID is missing'; exit 1; }
+
+      - name: Prepare alias Worker
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/autoworld-alias
+          cat >/tmp/autoworld-alias/worker.mjs <<'EOF'
+          const TARGET='https://auto-sale-demo.viiversion.com';
+          export default {
+            async fetch(request) {
+              const incoming=new URL(request.url);
+              const target=new URL(TARGET);
+              target.pathname=incoming.pathname;
+              target.search=incoming.search;
+
+              const headers=new Headers(request.headers);
+              headers.set('x-forwarded-host',incoming.host);
+              headers.set('x-forwarded-proto','https');
+
+              const init={method:request.method,headers,redirect:'manual'};
+              if(request.method!=='GET'&&request.method!=='HEAD')init.body=request.body;
+
+              const upstream=await fetch(new Request(target.toString(),init));
+              const outHeaders=new Headers(upstream.headers);
+              const location=outHeaders.get('location');
+              if(location){
+                outHeaders.set('location',location.replaceAll('https://auto-sale-demo.viiversion.com','https://autoworld.viiversion.com'));
+              }
+              return new Response(upstream.body,{
+                status:upstream.status,
+                statusText:upstream.statusText,
+                headers:outHeaders
+              });
+            }
+          };
+          EOF
+
+          cat >/tmp/autoworld-alias/wrangler.jsonc <<'EOF'
+          {
+            "name": "autoworld-alias",
+            "main": "./worker.mjs",
+            "compatibility_date": "2026-09-26"
+          }
+          EOF
+
+      - name: Deploy alias Worker
+        working-directory: /tmp/autoworld-alias
+        run: npx --yes wrangler@4 deploy --config wrangler.jsonc
+
+      - name: Attach autoworld.viiversion.com custom domain
+        shell: bash
+        run: |
+          set -euo pipefail
+          response=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains" \
+            -X PUT \
+            -H 'Content-Type: application/json' \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            --data "{\"hostname\":\"${ALIAS_HOST}\",\"service\":\"${SERVICE_NAME}\",\"zone_id\":\"${VIIVERSION_ZONE_ID}\",\"zone_name\":\"viiversion.com\"}")
+          echo "$response" | jq '{success, result: {hostname: .result.hostname, service: .result.service, zone_name: .result.zone_name}, errors}'
+          test "$(echo "$response" | jq -r '.success')" = "true"
+          test "$(echo "$response" | jq -r '.result.hostname')" = "$ALIAS_HOST"
+          test "$(echo "$response" | jq -r '.result.service')" = "$SERVICE_NAME"
+
+      - name: Verify alias
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 30); do
+            code=$(curl -L -sS --connect-timeout 5 --max-time 20 -o /tmp/health.json -w '%{http_code}' "https://${ALIAS_HOST}/api/health" || true)
+            if [ "$code" = "200" ] && jq -e '.ok == true and .service == "auto-sale-yandex"' /tmp/health.json >/dev/null 2>&1; then
+              echo "Verified https://${ALIAS_HOST}/"
+              exit 0
+            fi
+            echo "Alias not ready yet (attempt $attempt, HTTP $code)"
+            sleep 5
+          done
+          exit 1
