@@ -23,7 +23,6 @@ jobs:
       VIIVERSION_ZONE_ID: 56fa9423ef85e05559f453af43ec400f
       RELAY_SERVICE: viiversion-telegram-relay
       RELAY_HOSTNAME: integration-telegram.viiversion.com
-      TELEGRAM_BOT_TOKEN: ${{ secrets.AUTO_SALE_TELEGRAM_BOT_TOKEN }}
 
     steps:
       - name: Checkout relay source
@@ -57,13 +56,6 @@ jobs:
       - name: Deploy Worker
         working-directory: auto-sale/cloudflare/telegram-relay
         run: npx wrangler deploy --config wrangler.production.toml
-
-      - name: Require Telegram token
-        run: test -n "$TELEGRAM_BOT_TOKEN"
-
-      - name: Set Telegram Worker secret
-        working-directory: auto-sale/cloudflare/telegram-relay
-        run: printf '%s' "$TELEGRAM_BOT_TOKEN" | npx wrangler secret put TELEGRAM_BOT_TOKEN --config wrangler.production.toml
 
       - name: Attach VIIVERSION custom domain
         shell: bash
