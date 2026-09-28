@@ -99,3 +99,43 @@ jobs:
           done
           test "$ready" -eq 1
           jq '{ok,source,mode,vendorId,productIds,tours:[.tours[]|{id,title,image,photos:(.gallery|length),from:.group.from,departures:(.group.departures|length)}]}' /tmp/lovetravel-bokun.json
+
+      - name: Production Bókun domain smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://${TARGET_DOMAIN}"
+          curl -fsS --connect-timeout 5 --max-time 60             "$base/api/bokun/domain?start=2026-09-29&end=2026-10-02" > /tmp/lovetravel-domain.json
+          jq -e '
+            .ok == true and
+            .schema == "lovetravel.bokun-domain.v1" and
+            .includeRaw == false and
+            (.domains | length == 2) and
+            ([.domains[].experience.id] == ["1287578","1287580"]) and
+            (all(.domains[]; (.rates | length) > 0)) and
+            (all(.domains[]; (.participants | length) >= 3)) and
+            (all(.domains[]; (.availabilitySlots | length) > 0)) and
+            (all(.domains[]; .coverage.rawPreserved == true)) and
+            (all(.domains[]; has("providerRaw") | not))
+          ' /tmp/lovetravel-domain.json >/dev/null
+
+          curl -fsS --connect-timeout 5 --max-time 60             "$base/api/bokun/domain?start=2026-09-29&end=2026-09-30&includeRaw=1" > /tmp/lovetravel-domain-raw.json
+          jq -e '
+            .includeRaw == true and
+            (all(.domains[]; (.providerRaw.product.id != null))) and
+            (all(.domains[]; (.providerRaw.availability | length) > 0))
+          ' /tmp/lovetravel-domain-raw.json >/dev/null
+
+          jq '{
+            schema,
+            domains:[.domains[]|{
+              id:.experience.id,
+              rates:(.rates|length),
+              participants:(.participants|length),
+              slots:(.availabilitySlots|length),
+              questions:(.bookingRequirements.questions|length),
+              extras:(.extras|length),
+              startPoints:(.experience.meeting.startPoints|length),
+              unmappedNonEmpty:.coverage.product.nonEmptyUnmappedTopLevelFields
+            }]
+          }' /tmp/lovetravel-domain.json
