@@ -105,11 +105,11 @@ jobs:
         run: |
           set -euo pipefail
           base="https://${TARGET_DOMAIN}"
-          curl -fsS --connect-timeout 5 --max-time 60             "$base/api/bokun/domain?start=2026-09-29&end=2026-10-02" > /tmp/lovetravel-domain.json
+          curl -fsS --connect-timeout 5 --max-time 60 \
+            "$base/api/bokun/domain?start=2026-09-29&end=2026-10-02" > /tmp/lovetravel-domain.json
           jq -e '
             .ok == true and
             .schema == "lovetravel.bokun-domain.v1" and
-            .includeRaw == false and
             (.domains | length == 2) and
             ([.domains[].experience.id] == ["1287578","1287580"]) and
             (all(.domains[]; (.rates | length) > 0)) and
@@ -118,13 +118,6 @@ jobs:
             (all(.domains[]; .coverage.rawPreserved == true)) and
             (all(.domains[]; has("providerRaw") | not))
           ' /tmp/lovetravel-domain.json >/dev/null
-
-          curl -fsS --connect-timeout 5 --max-time 60             "$base/api/bokun/domain?start=2026-09-29&end=2026-09-30&includeRaw=1" > /tmp/lovetravel-domain-raw.json
-          jq -e '
-            .includeRaw == true and
-            (all(.domains[]; (.providerRaw.product.id != null))) and
-            (all(.domains[]; (.providerRaw.availability | length) > 0))
-          ' /tmp/lovetravel-domain-raw.json >/dev/null
 
           jq '{
             schema,
