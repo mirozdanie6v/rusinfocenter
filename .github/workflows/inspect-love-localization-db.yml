@@ -28,16 +28,6 @@ jobs:
           node-version: 22
       - working-directory: love-travel
         run: npm install --no-fund --no-audit
-      - name: Probe production Workers AI
-        shell: bash
-        run: |
-          set -euo pipefail
-          curl -fsS -X POST "https://lovetravel.viiversion.com/api/ai/chat" \
-            -H 'content-type: application/json' \
-            -H 'x-max-tour-locale: en' \
-            --data '{"message":"Hello","locale":"en"}' \
-            | jq '{ok,source,reply:(.reply|tostring|.[0:120])}'
-
       - name: Query localization cache
         working-directory: love-travel
         shell: bash
