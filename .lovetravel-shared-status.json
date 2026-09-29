@@ -1,5 +1,7 @@
 {
-  "stage": "running",
+  "stage": "success",
   "workflowRunId": "36569153838",
-  "triggerCommit": "5c12eca0ba183f8a845cf03a3a70a6e9b919cd9f"
+  "triggerCommit": "5c12eca0ba183f8a845cf03a3a70a6e9b919cd9f",
+  "domain": "https://lovetravel.viiversion.com",
+  "worker": "love-travel-v28"
 }
