@@ -1,0 +1,93 @@
+name: Run LoveTravel localization scheduled sync
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.run-love-localization-sync'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: mirozdanie6v/LoveTravel-
+          ref: main
+          path: love-travel
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - working-directory: love-travel
+        run: npm install --no-fund --no-audit
+
+      - name: Prepare remote production binding config
+        working-directory: love-travel
+        shell: bash
+        run: |
+          node - <<'NODE'
+          const fs=require('fs');
+          const config=JSON.parse(fs.readFileSync('wrangler.jsonc','utf8'));
+          config.d1_databases=(config.d1_databases||[]).map(item=>({...item,remote:true}));
+          fs.writeFileSync('wrangler-sync.jsonc',JSON.stringify(config,null,2));
+          NODE
+
+      - name: Invoke scheduled localization sync remotely
+        working-directory: love-travel
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler dev --remote --test-scheduled --config wrangler-sync.jsonc --port 8787 > /tmp/love-sync-wrangler.log 2>&1 &
+          pid=$!
+          cleanup() { kill "$pid" 2>/dev/null || true; }
+          trap cleanup EXIT
+
+          ready=0
+          for attempt in $(seq 1 60); do
+            if curl -fsS --max-time 2 "http://127.0.0.1:8787/" >/dev/null 2>&1; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ready" -ne 1 ]; then
+            cat /tmp/love-sync-wrangler.log
+            exit 1
+          fi
+
+          code=0
+          if curl -fsS --max-time 600 "http://127.0.0.1:8787/cdn-cgi/handler/scheduled?format=json&cron=*%20*%20*%20*%20*" > /tmp/scheduled.json; then
+            code=1
+          elif curl -fsS --max-time 600 "http://127.0.0.1:8787/cdn-cgi/local/scheduled?format=json&cron=*%20*%20*%20*%20*" > /tmp/scheduled.json; then
+            code=1
+          fi
+          if [ "$code" -ne 1 ]; then
+            cat /tmp/love-sync-wrangler.log
+            exit 1
+          fi
+          cat /tmp/scheduled.json
+          cat /tmp/love-sync-wrangler.log | tail -120
+
+      - name: Verify production D1 cache
+        working-directory: love-travel
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute love-travel-v28-db --remote --config wrangler.jsonc \
+            --command "SELECT locale, product_id, COUNT(*) AS fields, MAX(updated_at) AS updated_at FROM bokun_content_localizations GROUP BY locale, product_id ORDER BY locale, product_id;" --json > /tmp/cache.json
+          cat /tmp/cache.json
+          jq -e '
+            [.[0].results[] | {key:(.locale + ":" + .product_id), fields:.fields}] as $rows |
+            (["ru:1287578","ru:1287580","vi:1287578","vi:1287580","ko:1287578","ko:1287580"]
+              | all(. as $key | any($rows[]; .key == $key and .fields >= 15)))
+          ' /tmp/cache.json >/dev/null
