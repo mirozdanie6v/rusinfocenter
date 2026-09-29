@@ -1,0 +1,53 @@
+name: Verify LoveTravel localization cache
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.verify-love-localization'
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Warm and verify localized Bókun reads
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://lovetravel.viiversion.com"
+          for lang in ru vi ko; do
+            echo "=== WARM $lang ==="
+            curl -fsS "$base/api/bokun/tours?locale=$lang&start=2026-09-30&end=2026-10-02"               | jq '{locale,tours:[.tours[]|{id,title,localization}]}'
+          done
+
+          for attempt in $(seq 1 18); do
+            ready=1
+            echo "=== CACHE CHECK $attempt ==="
+            for lang in ru vi ko; do
+              file="/tmp/love-$lang.json"
+              curl -fsS "$base/api/bokun/tours?locale=$lang&start=2026-09-30&end=2026-10-02" > "$file"
+              jq '{locale,tours:[.tours[]|{id,title,localization}]}' "$file"
+              if ! jq -e '
+                .ok == true and
+                .mode == "read-only" and
+                (.tours | length == 2) and
+                (all(.tours[];
+                  .localization.locale == $lang and
+                  .localization.source == "viiversion-cache" and
+                  .localization.pendingFields == 0
+                ))
+              ' --arg lang "$lang" "$file" >/dev/null; then
+                ready=0
+              fi
+            done
+            if [ "$ready" -eq 1 ]; then
+              echo "All localization caches are ready."
+              exit 0
+            fi
+            sleep 5
+          done
+
+          echo "Localization cache did not fully warm."
+          exit 1
