@@ -100,6 +100,28 @@ jobs:
           test "$ready" -eq 1
           jq '{ok,source,mode,vendorId,productIds,tours:[.tours[]|{id,title,image,photos:(.gallery|length),from:.group.from,departures:(.group.departures|length)}]}' /tmp/lovetravel-bokun.json
 
+      - name: Temporary Bókun locale probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          for product in 1287578 1287580; do
+            for lang in EN RU VI KO; do
+              url="https://integration.viiversion.com/api/bokun/product?vendorId=137689&productId=${product}&lang=${lang}"
+              echo "--- PRODUCT ${product} LANG ${lang} ---"
+              curl -fsS --connect-timeout 5 --max-time 60 "$url" | jq '{
+                id:(.id // .product.id // .activity.id // null),
+                title:(.title // .product.title // .activity.title // null),
+                description:(.description // .product.description // .activity.description // null),
+                locale:(.locale // .product.locale // .activity.locale // null),
+                language:(.language // .product.language // .activity.language // null),
+                supportedLocales:(.supportedLocales // .product.supportedLocales // .activity.supportedLocales // null),
+                availableLanguages:(.availableLanguages // .product.availableLanguages // .activity.availableLanguages // null),
+                guidanceTypes:(.guidanceTypes // .product.guidanceTypes // .activity.guidanceTypes // null),
+                translationKeys:([paths(scalars) as $p | select(($p|map(tostring)|join("."))|test("translat|localiz|locale|language";"i")) | ($p|map(tostring)|join("."))] | unique | .[0:80])
+              }'
+            done
+          done
+
       - name: Production Bókun domain smoke
         shell: bash
         run: |
