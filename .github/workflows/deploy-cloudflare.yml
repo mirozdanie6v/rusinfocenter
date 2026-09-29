@@ -11,6 +11,8 @@ on:
       - '.github/workflows/deploy-uniq-smart-rent-shared.yml'
       - '.deploy-integration-service'
       - '.github/workflows/deploy-integration-service-shared.yml'
+      - '.deploy-brand-agent'
+      - '.github/workflows/deploy-brand-agent-shared.yml'
       - '.github/workflows/deploy-cloudflare.yml'
   workflow_dispatch:
 
