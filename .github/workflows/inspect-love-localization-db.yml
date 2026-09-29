@@ -1,0 +1,36 @@
+name: Inspect LoveTravel localization D1
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.inspect-love-localization-db'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: mirozdanie6v/LoveTravel-
+          ref: main
+          path: love-travel
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - working-directory: love-travel
+        run: npm install --no-fund --no-audit
+      - name: Query localization cache
+        working-directory: love-travel
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute love-travel-v28-db --remote --config wrangler.jsonc             --command "SELECT locale, product_id, COUNT(*) AS fields, MAX(updated_at) AS updated_at FROM bokun_content_localizations GROUP BY locale, product_id ORDER BY locale, product_id;" --json
