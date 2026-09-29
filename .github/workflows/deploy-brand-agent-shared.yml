@@ -1,0 +1,122 @@
+name: Deploy VIIVERSION Brand Agent via RIC
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.deploy-brand-agent'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CF_ZONE_ID: 56fa9423ef85e05559f453af43ec400f
+      CF_ZONE_NAME: viiversion.com
+      TARGET_DOMAIN: agent.viiversion.com
+      WORKER_NAME: viiversion-brand-agent
+
+    steps:
+      - name: Checkout VIIVERSION Brand Agent
+        uses: actions/checkout@v5
+        with:
+          repository: mirozdanie6v/viiversion
+          ref: viiversion
+          path: viiversion
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Verify shared Cloudflare credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
+          echo 'RIC shared Cloudflare credentials are available.'
+
+      - name: Install and validate Brand Agent Worker
+        working-directory: viiversion/brand-agent-worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --no-fund --no-audit
+          node --check worker.js
+          npx wrangler deploy --dry-run --config wrangler.jsonc
+
+      - name: Prepare shared deployment config
+        working-directory: viiversion/brand-agent-worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const cfg = JSON.parse(fs.readFileSync('wrangler.jsonc', 'utf8'));
+          cfg.name = process.env.WORKER_NAME;
+          delete cfg.routes;
+          delete cfg.account_id;
+          fs.writeFileSync('wrangler.shared.jsonc', JSON.stringify(cfg, null, 2) + '\n');
+          NODE
+
+      - name: Deploy standalone Brand Agent Worker
+        working-directory: viiversion/brand-agent-worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler deploy --config wrangler.shared.jsonc
+
+      - name: Attach agent.viiversion.com
+        shell: bash
+        run: |
+          set -euo pipefail
+          response=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains"             -X PUT             -H 'Content-Type: application/json'             -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}"             --data "{\"hostname\":\"${TARGET_DOMAIN}\",\"service\":\"${WORKER_NAME}\",\"zone_id\":\"${CF_ZONE_ID}\",\"zone_name\":\"${CF_ZONE_NAME}\"}")
+          echo "$response" | jq '{success,result:{hostname:.result.hostname,service:.result.service,zone_name:.result.zone_name},errors}'
+          test "$(echo "$response" | jq -r '.success')" = "true"
+          test "$(echo "$response" | jq -r '.result.hostname')" = "${TARGET_DOMAIN}"
+          test "$(echo "$response" | jq -r '.result.service')" = "${WORKER_NAME}"
+
+      - name: Verify Brand MCP initialize
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://${TARGET_DOMAIN}"
+          ready=0
+          for attempt in $(seq 1 36); do
+            code=$(curl -L -sS --connect-timeout 5 --max-time 20               -o /tmp/brand-init.json -w '%{http_code}'               -X POST "$base/mcp?deploy=${GITHUB_SHA}"               -H 'content-type: application/json'               -H 'accept: application/json, text/event-stream'               --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"ric-shared-deploy","version":"1"}}}' || true)
+            if [ "$code" = "200" ] && jq -e '.result.serverInfo.name == "viiversion-brand-agent"' /tmp/brand-init.json >/dev/null 2>&1; then
+              ready=1
+              break
+            fi
+            echo "Brand Agent not ready yet (attempt $attempt, HTTP $code)"
+            sleep 5
+          done
+          test "$ready" -eq 1
+          jq '{jsonrpc,id,result:{protocolVersion:.result.protocolVersion,serverInfo:.result.serverInfo,capabilities:.result.capabilities}}' /tmp/brand-init.json
+
+      - name: Verify MCP tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://${TARGET_DOMAIN}"
+          curl -fsS -X POST "$base/mcp"             -H 'content-type: application/json'             -H 'accept: application/json, text/event-stream'             --data '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'             > /tmp/brand-tools.json
+          jq -e '
+            ([.result.tools[].name] | sort) ==
+            (["get_brand_context","get_priority_entities","get_proof","plan_brand_task","validate_brand_output"] | sort)
+          ' /tmp/brand-tools.json >/dev/null
+
+          curl -fsS -X POST "$base/mcp"             -H 'content-type: application/json'             -H 'accept: application/json, text/event-stream'             --data '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"get_brand_context","arguments":{"surface":"website","audience":"SME owner","goal":"clarity"}}}'             > /tmp/brand-context.json
+          jq -e '
+            .result.structuredContent.company.brand == "VIIVERSION" and
+            ([.result.structuredContent.company.directions[].id] | index("DIR-ENG") != null) and
+            ([.result.structuredContent.company.directions[].id] | index("DIR-SW") != null)
+          ' /tmp/brand-context.json >/dev/null
+          echo 'VIIVERSION Brand MCP production verified.'
