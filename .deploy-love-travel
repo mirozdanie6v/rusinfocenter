@@ -1,2 +1,2 @@
-deploy resilient Bókun localization batches 2026-09-30
-source LoveTravel main 3e4b63c0d18c6acae837fd8046c0f330a25864c7
+deploy serialized Bókun localization queue 2026-09-30
+source LoveTravel main b504fbb84a2eb02f277a432b1d598e49e9036809
