@@ -110,7 +110,7 @@ jobs:
           curl -fsS -X POST "$base/mcp"             -H 'content-type: application/json'             -H 'accept: application/json, text/event-stream'             --data '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'             > /tmp/brand-tools.json
           jq -e '
             ([.result.tools[].name] | sort) ==
-            (["get_brand_context","get_priority_entities","get_proof","plan_brand_task","validate_brand_output"] | sort)
+            (["evaluate_market_signal","get_brand_context","get_distribution_routes","get_market_context","get_priority_entities","get_proof","plan_brand_task","plan_gtm_motion","plan_market_projection","plan_productization","validate_brand_output"] | sort)
           ' /tmp/brand-tools.json >/dev/null
 
           curl -fsS -X POST "$base/mcp"             -H 'content-type: application/json'             -H 'accept: application/json, text/event-stream'             --data '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"get_brand_context","arguments":{"surface":"website","audience":"SME owner","goal":"clarity"}}}'             > /tmp/brand-context.json
@@ -120,3 +120,26 @@ jobs:
             ([.result.structuredContent.company.directions[].id] | index("DIR-SW") != null)
           ' /tmp/brand-context.json >/dev/null
           echo 'VIIVERSION Brand MCP production verified.'
+
+      - name: Verify GTM / productization tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://${TARGET_DOMAIN}"
+
+          curl -fsS -X POST "$base/mcp"             -H 'content-type: application/json'             --data '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"plan_gtm_motion","arguments":{"task":"Launch Proposal Studio internationally through Product Hunt and ChatGPT App Directory","entity_id":"P28","market":"Global","audience":"software users","goal":"adoption"}}}'             > /tmp/brand-gtm.json
+          jq -e '.result.structuredContent.primaryMotion.id == "M04" or .result.structuredContent.primaryMotion.id == "M05"' /tmp/brand-gtm.json >/dev/null
+
+          curl -fsS -X POST "$base/mcp"             -H 'content-type: application/json'             --data '{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"plan_productization","arguments":{"concept":"A new VIIVERSION plugin for a platform marketplace","target_platforms":["WordPress.org"]}}}'             > /tmp/brand-productization.json
+          jq -e '
+            .result.structuredContent.entityState == "candidate_or_unmapped_concept" and
+            .result.structuredContent.canonicalMutationAllowed == false and
+            .result.structuredContent.implementationClaimAllowed == false
+          ' /tmp/brand-productization.json >/dev/null
+
+          curl -fsS -X POST "$base/mcp"             -H 'content-type: application/json'             --data '{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"evaluate_market_signal","arguments":{"observation":"One prospect requested a new product type","repeated_evidence_count":1,"propose_change":true}}}'             > /tmp/brand-signal.json
+          jq -e '
+            .result.structuredContent.stage == "Observation" and
+            .result.structuredContent.canonicalMutationAllowed == false
+          ' /tmp/brand-signal.json >/dev/null
+          echo 'VIIVERSION Brand GTM/Productization QA PASS.'
