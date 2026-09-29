@@ -1,0 +1,56 @@
+name: Deploy VIIVERSION integration via RIC
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.deploy-viiversion-integration'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Checkout VIIVERSION
+        uses: actions/checkout@v5
+        with:
+          repository: mirozdanie6v/viiversion
+          ref: main
+          path: viiversion
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Require Cloudflare credentials
+        shell: bash
+        run: |
+          test -n "${CLOUDFLARE_API_TOKEN:-}" || { echo "CLOUDFLARE_API_TOKEN is missing"; exit 1; }
+          test -n "${CLOUDFLARE_ACCOUNT_ID:-}" || { echo "CLOUDFLARE_ACCOUNT_ID is missing"; exit 1; }
+
+      - name: Verify integration service
+        working-directory: viiversion/integration-service
+        run: |
+          npm install --no-fund --no-audit
+          npm run typecheck
+          npm test
+
+      - name: Deploy integration service
+        working-directory: viiversion/integration-service
+        run: npx wrangler deploy
+
+      - name: Smoke language forwarding
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS https://integration.viiversion.com/health | jq -e '.ok == true' >/dev/null
+          for lang in EN RU VI KO; do
+            curl -fsS "https://integration.viiversion.com/api/bokun/product?vendorId=137689&productId=1287578&lang=${lang}"               | jq -e '.id == 1287578' >/dev/null
+          done
