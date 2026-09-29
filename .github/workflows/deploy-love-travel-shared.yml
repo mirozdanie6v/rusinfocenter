@@ -133,26 +133,3 @@ jobs:
             }]
           }' /tmp/lovetravel-domain.json
 
-          echo '--- LOVETRAVEL L10N AUDIT START ---'
-          jq '{domains:[.domains[]|{
-            id:.experience.id,
-            title:.experience.title,
-            description:.experience.description,
-            duration:.experience.duration,
-            languages:.experience.languages,
-            difficulty:.experience.difficulty,
-            meeting:.experience.meeting,
-            pickup:{placeGroups:.experience.pickup.placeGroups,noPickupMessage:.experience.pickup.noPickupMessage},
-            itinerary:.experience.itinerary,
-            included:.experience.included,
-            excluded:.experience.excluded,
-            requirements:.experience.requirements,
-            accessibility:.experience.accessibility,
-            offers:.offers,
-            paymentCurrencies:.experience.paymentCurrencies,
-            rates:[.rates[]|{id,title,code,description,details,textItems,pickup,cancellationPolicy}],
-            participants:[.participants[]|{id,title,ticketCategory,minAge,maxAge}],
-            extras:[.extras[]|{id,title,description,bookingQuestions}],
-            bookingRequirements:{questions:.bookingRequirements.questions,customFields:.bookingRequirements.customFields,requiredCustomerFields:.bookingRequirements.requiredCustomerFields,mainContactFields:.bookingRequirements.mainContactFields,passengerFields:.bookingRequirements.passengerFields}
-          }]}' /tmp/lovetravel-domain.json
-          echo '--- LOVETRAVEL L10N AUDIT END ---'
