@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - '.deploy-brand-agent'
+      - '.github/workflows/deploy-brand-agent-shared.yml'
   workflow_dispatch:
 
 permissions:
