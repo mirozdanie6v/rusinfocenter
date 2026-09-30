@@ -1,0 +1,53 @@
+{
+  "approved": true,
+  "clientApproval": "NHA_TRANG_LOVE_TRAVEL_CONFIRMED",
+  "bookingRequest": {
+    "mainContactDetails": [
+      {
+        "questionId": "firstName",
+        "values": [
+          "VIIVERSION"
+        ]
+      },
+      {
+        "questionId": "lastName",
+        "values": [
+          "Live Test"
+        ]
+      },
+      {
+        "questionId": "email",
+        "values": [
+          "booking-test@viiversion.com"
+        ]
+      },
+      {
+        "questionId": "phoneNumber",
+        "values": [
+          "+84900000000"
+        ]
+      }
+    ],
+    "activityBookings": [
+      {
+        "activityId": 1287578,
+        "rateId": 2581224,
+        "startTimeId": 5782388,
+        "date": "2026-10-01",
+        "pickup": false,
+        "dropoff": false,
+        "checkedIn": false,
+        "customized": false,
+        "passengers": [
+          {
+            "pricingCategoryId": 1250028
+          }
+        ]
+      }
+    ],
+    "sendCustomerNotification": false,
+    "externalBookingReference": "LT-TEST-LIVE-36749047590",
+    "externalBookingEntityName": "VIIVERSION",
+    "externalBookingEntityCode": "LOVE_TRAVEL"
+  }
+}
