@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '.prepare-bokun-live-reserve'
+      - '.github/workflows/prepare-bokun-live-reserve.yml'
 
 jobs:
   prepare:
