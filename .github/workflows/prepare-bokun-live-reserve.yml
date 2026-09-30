@@ -1,0 +1,106 @@
+name: Prepare Bókun live reserve payload
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.prepare-bokun-live-reserve'
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Build fresh adult Robinson Beach booking request
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='https://integration.viiversion.com'
+          vendor='137689'
+          product='1287578'
+          start='2026-10-01'
+          end='2026-10-07'
+
+          curl -fsS "$base/api/bokun/product?vendorId=$vendor&productId=$product" > /tmp/product.json
+          curl -fsS "$base/api/bokun/availability?vendorId=$vendor&productId=$product&start=$start&end=$end&currency=USD" > /tmp/availability.json
+
+          adult_category="$(jq -r '
+            [
+              .pricingCategories[]? |
+              select(
+                ((.ticketCategory // "") | ascii_upcase) == "ADULT"
+                or ((.title // "") | ascii_downcase | contains("adult"))
+              ) |
+              .id
+            ][0] // empty
+          ' /tmp/product.json)"
+          test -n "$adult_category"
+
+          slot="$(jq -c --argjson cat "$adult_category" '
+            [
+              .[] |
+              select(.soldOut != true and .unavailable != true) |
+              . as $slot |
+              [
+                (.pricesByRate // [])[] |
+                select(any(.pricePerCategoryUnit[]?; .id == $cat)) |
+                {
+                  slotId:$slot.id,
+                  activityId:$slot.activityId,
+                  startTimeId:$slot.startTimeId,
+                  dateIso:($slot.id | capture("_(?<y>[0-9]{4})(?<m>[0-9]{2})(?<d>[0-9]{2})$") | "\(.y)-\(.m)-\(.d)"),
+                  rateId:.activityRateId,
+                  categoryId:$cat,
+                  amount:([.pricePerCategoryUnit[]? | select(.id == $cat) | .amount][0] // null)
+                }
+              ][0]
+            ] | map(select(. != null)) | .[0] // empty
+          ' /tmp/availability.json)"
+          test -n "$slot"
+          echo "$slot" | jq .
+
+          activity_id="$(jq -r '.activityId' <<<"$slot")"
+          start_time_id="$(jq -r '.startTimeId' <<<"$slot")"
+          date="$(jq -r '.dateIso' <<<"$slot")"
+          rate_id="$(jq -r '.rateId' <<<"$slot")"
+          category_id="$(jq -r '.categoryId' <<<"$slot")"
+
+          jq -n             --argjson activityId "$activity_id"             --argjson rateId "$rate_id"             --argjson startTimeId "$start_time_id"             --argjson categoryId "$category_id"             --arg date "$date"             --arg ref "LT-TEST-LIVE-${GITHUB_RUN_ID}"             '{
+              mainContactDetails:[
+                {questionId:"firstName",values:["VIIVERSION"]},
+                {questionId:"lastName",values:["Live Test"]},
+                {questionId:"email",values:["booking-test@viiversion.com"]},
+                {questionId:"phoneNumber",values:["+84900000000"]}
+              ],
+              activityBookings:[{
+                activityId:$activityId,
+                rateId:$rateId,
+                startTimeId:$startTimeId,
+                date:$date,
+                pickup:false,
+                dropoff:false,
+                checkedIn:false,
+                customized:false,
+                passengers:[{pricingCategoryId:$categoryId}]
+              }],
+              sendCustomerNotification:false,
+              externalBookingReference:$ref,
+              externalBookingEntityName:"VIIVERSION",
+              externalBookingEntityCode:"LOVE_TRAVEL"
+            }' > /tmp/booking.json
+
+          curl -fsS             -X POST "$base/api/bokun/checkout/options?vendorId=$vendor&currency=USD"             -H 'content-type: application/json'             --data-binary @/tmp/booking.json > /tmp/options.json
+
+          option="$(jq -r '
+            .options[]? |
+            select((.paymentMethods.allowedMethods // []) | index("RESERVE_FOR_EXTERNAL_PAYMENT")) |
+            .type
+          ' /tmp/options.json | head -n1)"
+          test -n "$option"
+
+          echo '=== BOOKING_REQUEST ==='
+          jq -c . /tmp/booking.json
+          echo '=== CHECKOUT_OPTION ==='
+          jq -n --arg option "$option" '{checkoutOption:$option,paymentMethod:"RESERVE_FOR_EXTERNAL_PAYMENT"}'
+          echo '=== READY ==='
+          jq -n             --arg option "$option"             --argjson amount "$(jq -r '.options[] | select(.type==$option) | .amount' --arg option "$option" /tmp/options.json)"             --arg currency "$(jq -r '.options[] | select(.type==$option) | .currency' --arg option "$option" /tmp/options.json)"             '{ready:true,checkoutOption:$option,paymentMethod:"RESERVE_FOR_EXTERNAL_PAYMENT",amount:$amount,currency:$currency,bookingCreated:false}'
