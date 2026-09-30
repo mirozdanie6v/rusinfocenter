@@ -1,7 +1,7 @@
 VIIVERSION Brand Agent deploy
 source_repo=mirozdanie6v/viiversion
 source_ref=viiversion
-source_sha=eda7bf1cd4bbabcc839f9a4648ca0af5530676fb
+source_sha=43e6ff01f860b91f52b99cfdca1ea7a45be66bb8
 target_worker=viiversion-brand-agent
 target_domain=agent.viiversion.com
-triggered=2026-09-30-v0.6-governance-classifier
+triggered=2026-09-30-v0.7.0-audit-contract
