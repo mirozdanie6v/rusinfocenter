@@ -93,11 +93,11 @@ jobs:
           ready=0
           for attempt in $(seq 1 36); do
             code=$(curl -L -sS --connect-timeout 5 --max-time 20               -o /tmp/brand-init.json -w '%{http_code}'               -X POST "$base/mcp?deploy=${GITHUB_SHA}"               -H 'content-type: application/json'               -H 'accept: application/json, text/event-stream'               --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"ric-shared-deploy","version":"1"}}}' || true)
-            if [ "$code" = "200" ] && jq -e '.result.serverInfo.name == "viiversion-brand-agent" and .result.serverInfo.version == "0.3.0"' /tmp/brand-init.json >/dev/null 2>&1; then
+            if [ "$code" = "200" ] && jq -e '.result.serverInfo.name == "viiversion-brand-agent" and .result.serverInfo.version == "0.4.0"' /tmp/brand-init.json >/dev/null 2>&1; then
               ready=1
               break
             fi
-            echo "Brand Agent v0.3.0 not ready yet (attempt $attempt, HTTP $code)"
+            echo "Brand Agent v0.4.0 not ready yet (attempt $attempt, HTTP $code)"
             sleep 5
           done
           test "$ready" -eq 1
@@ -113,7 +113,7 @@ jobs:
           jq -r '[.result.tools[].name] | sort | .[]' /tmp/brand-tools.json
           jq -e '
             ([.result.tools[].name] | sort) ==
-            (["evaluate_market_signal","get_brand_context","get_distribution_routes","get_live_source_plan","get_market_context","get_priority_entities","get_proof","plan_brand_task","plan_gtm_motion","plan_market_projection","plan_productization","validate_brand_output","validate_live_context"] | sort)
+            (["evaluate_market_signal","get_brand_context","get_distribution_routes","get_live_source_plan","get_market_context","get_priority_entities","get_proof","plan_agent_roles","plan_brand_task","plan_gtm_motion","plan_market_projection","plan_productization","validate_brand_output","validate_live_context"] | sort)
           ' /tmp/brand-tools.json >/dev/null
 
           curl -fsS -X POST "$base/mcp"             -H 'content-type: application/json'             -H 'accept: application/json, text/event-stream'             --data '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"get_brand_context","arguments":{"surface":"website","audience":"SME owner","goal":"clarity"}}}'             > /tmp/brand-context.json
@@ -123,6 +123,27 @@ jobs:
             ([.result.structuredContent.company.directions[].id] | index("DIR-SW") != null)
           ' /tmp/brand-context.json >/dev/null
           echo 'VIIVERSION Brand MCP production verified.'
+
+      - name: Verify specialist role router
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://${TARGET_DOMAIN}"
+
+          curl -fsS -X POST "$base/mcp" \
+            -H 'content-type: application/json' \
+            --data '{"jsonrpc":"2.0","id":31,"method":"tools/call","params":{"name":"plan_agent_roles","arguments":{"task":"Build the current Booking page for the VIIVERSION website","surface":"website","current_state":true,"final_public":true}}}' \
+            > /tmp/brand-role-plan.json
+
+          jq -e '
+            (.result.structuredContent.route | index("source-truth") != null) and
+            (.result.structuredContent.route | index("brand-strategy") != null) and
+            (.result.structuredContent.route | index("commercial-architect") != null) and
+            (.result.structuredContent.route | index("channel-architect") != null) and
+            (.result.structuredContent.route | index("proof-analyst") != null) and
+            (.result.structuredContent.route | index("brand-qa") != null)
+          ' /tmp/brand-role-plan.json >/dev/null
+          echo 'VIIVERSION Brand specialist role routing QA PASS.'
 
       - name: Verify GTM / productization tools
         shell: bash
