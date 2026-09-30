@@ -1,7 +1,7 @@
 VIIVERSION Brand Agent deploy
 source_repo=mirozdanie6v/viiversion
 source_ref=viiversion
-source_sha=2e1e27416c58ec392188687e8f38a4aecde749a7
+source_sha=eda7bf1cd4bbabcc839f9a4648ca0af5530676fb
 target_worker=viiversion-brand-agent
 target_domain=agent.viiversion.com
-triggered=2026-09-30-v0.6-qa-source-gate
+triggered=2026-09-30-v0.6-governance-classifier
