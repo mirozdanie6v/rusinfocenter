@@ -1,0 +1,124 @@
+name: Deploy AutoWorld AWG proxy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .deploy-autoworld-awg-proxy
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      VIIVERSION_ZONE_ID: 56fa9423ef85e05559f453af43ec400f
+      AWG_HOSTNAME: awg.viiversion.com
+      AWG_SERVICE: autoworld-awg-proxy
+      AWG_ORIGIN: https://bbamitq3qlhgqm671ppu.containers.yandexcloud.net
+
+    steps:
+      - name: Validate Cloudflare credentials
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Build proxy worker
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/autoworld-awg-proxy
+          cat > /tmp/autoworld-awg-proxy/index.js <<'JS'
+          export default {
+            async fetch(request, env) {
+              const incoming = new URL(request.url);
+              const origin = new URL(env.AWG_ORIGIN);
+              incoming.protocol = origin.protocol;
+              incoming.hostname = origin.hostname;
+              incoming.port = origin.port;
+
+              const headers = new Headers(request.headers);
+              headers.set('x-forwarded-host', request.headers.get('host') || 'awg.viiversion.com');
+              headers.set('x-forwarded-proto', 'https');
+
+              const upstreamRequest = new Request(incoming.toString(), {
+                method: request.method,
+                headers,
+                body: (request.method === 'GET' || request.method === 'HEAD') ? undefined : request.body,
+                redirect: 'manual'
+              });
+
+              const response = await fetch(upstreamRequest);
+              const responseHeaders = new Headers(response.headers);
+              const location = responseHeaders.get('location');
+              if (location && location.startsWith(env.AWG_ORIGIN)) {
+                responseHeaders.set('location', location.replace(env.AWG_ORIGIN, 'https://awg.viiversion.com'));
+              }
+
+              return new Response(response.body, {
+                status: response.status,
+                statusText: response.statusText,
+                headers: responseHeaders
+              });
+            }
+          };
+          JS
+
+          cat > /tmp/autoworld-awg-proxy/wrangler.jsonc <<EOF
+          {
+            "name": "${AWG_SERVICE}",
+            "main": "index.js",
+            "compatibility_date": "2026-09-30",
+            "workers_dev": true,
+            "vars": {
+              "AWG_ORIGIN": "${AWG_ORIGIN}"
+            },
+            "observability": {
+              "enabled": true
+            }
+          }
+          EOF
+
+      - name: Deploy AWG proxy worker
+        working-directory: /tmp/autoworld-awg-proxy
+        run: npx --yes wrangler@4 deploy --config wrangler.jsonc
+
+      - name: Attach awg.viiversion.com
+        run: |
+          set -euo pipefail
+          response=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains" \
+            -X PUT \
+            -H 'Content-Type: application/json' \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            --data "{\"hostname\":\"${AWG_HOSTNAME}\",\"service\":\"${AWG_SERVICE}\",\"zone_id\":\"${VIIVERSION_ZONE_ID}\",\"zone_name\":\"viiversion.com\"}")
+          echo "$response" | jq '{success,result:{hostname:.result.hostname,service:.result.service},errors}'
+          test "$(echo "$response" | jq -r '.success')" = "true"
+          test "$(echo "$response" | jq -r '.result.hostname')" = "$AWG_HOSTNAME"
+          test "$(echo "$response" | jq -r '.result.service')" = "$AWG_SERVICE"
+
+      - name: Verify AWG public domain
+        run: |
+          set -euo pipefail
+          base="https://${AWG_HOSTNAME}"
+          ok=0
+          for attempt in $(seq 1 24); do
+            health_code=$(curl -L -sS --connect-timeout 5 --max-time 20 -o /tmp/awg-health.json -w '%{http_code}' "$base/api/health?deploy=${GITHUB_SHA}" || true)
+            home_code=$(curl -L -sS --connect-timeout 5 --max-time 20 -o /tmp/awg-home.html -w '%{http_code}' "$base/?deploy=${GITHUB_SHA}" || true)
+            if [ "$health_code" = "200" ] && [ "$home_code" = "200" ] \
+              && jq -e '.ok == true and .persistence == "ydb-serverless"' /tmp/awg-health.json >/dev/null; then
+              echo "Verified https://${AWG_HOSTNAME}"
+              jq . /tmp/awg-health.json
+              ok=1
+              break
+            fi
+            sleep 5
+          done
+          test "$ok" -eq 1
