@@ -70,9 +70,11 @@ jobs:
             if (state.activeRate !== 1) throw new Error(productId + ': exactly one rate must be active');
 
             const firstThumb = page.locator('#tourScreen [data-lt-gallery-thumb]').nth(Math.min(2,spec.photos-1));
-            await firstThumb.click();
+            await firstThumb.evaluate(el => el.click());
+            await page.waitForTimeout(120);
             const counterAfterThumb = (await page.locator('#tourScreen [data-lt-gallery-count]').textContent()).trim();
-            if (counterAfterThumb !== Math.min(3,spec.photos)+' / '+spec.photos) throw new Error(productId + ': thumbnail navigation failed');
+            console.log('THUMB_NAV', productId, counterAfterThumb);
+            if (counterAfterThumb !== Math.min(3,spec.photos)+' / '+spec.photos) throw new Error(productId + ': thumbnail navigation failed, got '+counterAfterThumb);
 
             await page.locator('#tourScreen [data-lt-gallery-open]').click();
             await page.waitForSelector('.lt-domain-lightbox');
