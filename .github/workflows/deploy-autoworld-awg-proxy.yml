@@ -19,7 +19,7 @@ jobs:
       VIIVERSION_ZONE_ID: 56fa9423ef85e05559f453af43ec400f
       AWG_HOSTNAME: awg.viiversion.com
       AWG_SERVICE: autoworld-awg-proxy
-      AWG_ORIGIN: https://bbamitq3qlhgqm671ppu.containers.yandexcloud.net
+      AWG_ORIGIN: https://d5dbgio6limv03usvipl.s183zexc.apigw.yandexcloud.net
 
     steps:
       - name: Validate Cloudflare credentials
