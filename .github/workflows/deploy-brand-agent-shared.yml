@@ -183,7 +183,7 @@ jobs:
             .result.structuredContent.artifact.type == "brand-decision" and
             .result.structuredContent.artifact.status == "PENDING" and
             .result.structuredContent.artifact.validation.status == "PASS"
-          ' /tmp/brand-role-execute.json >/dev/null
+          ' /tmp/brand-role-execute.json >/dev/null || { echo "brand role execute response:"; cat /tmp/brand-role-execute.json; exit 1; }
 
           artifact_id=$(jq -r '.result.structuredContent.artifact.artifactId' /tmp/brand-role-execute.json)
           test -n "$artifact_id"
