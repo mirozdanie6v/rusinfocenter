@@ -45,13 +45,14 @@ jobs:
           command='ric/.run-bokun-live-reserve.json'
           jq . "$command"
           jq -e '
+            .bookingRequest.activityBookings[0].activityId as $activityId |
             .approved == true and
             .clientApproval == "NHA_TRANG_LOVE_TRAVEL_CONFIRMED" and
             (.bookingRequest | type == "object") and
             (.bookingRequest.externalBookingReference | startswith("LT-TEST-")) and
             (.bookingRequest.sendCustomerNotification != true) and
             (.bookingRequest.activityBookings | length == 1) and
-            ([1287578,1287580] | index(.bookingRequest.activityBookings[0].activityId) != null)
+            (["1287578","1287580"] | index($activityId | tostring) != null)
           ' "$command" >/dev/null
 
       - name: Install Wrangler and prepare Worker config
