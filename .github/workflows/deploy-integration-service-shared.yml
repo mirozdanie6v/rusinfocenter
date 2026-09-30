@@ -105,6 +105,18 @@ jobs:
           echo "META_SETUP_URL=https://integration.viiversion.com/whatsapp/meta-setup?token=$setup_token"
           echo "META_SETUP_EXPIRES_AT=$expires_at"
 
+      - name: Create short-lived WhatsApp Browser setup link
+        working-directory: viiversion/integration-service
+        shell: bash
+        run: |
+          set -euo pipefail
+          setup_token="$(openssl rand -hex 32)"
+          expires_at="$(date -u -d '+60 minutes' +%s)"
+          printf '%s' "$setup_token" | npx wrangler secret put WHATSAPP_BROWSER_SETUP_TOKEN --config wrangler.shared.jsonc >/dev/null
+          printf '%s' "$expires_at" | npx wrangler secret put WHATSAPP_BROWSER_SETUP_EXPIRES_AT --config wrangler.shared.jsonc >/dev/null
+          echo "WHATSAPP_BROWSER_SETUP_URL=https://integration.viiversion.com/whatsapp/browser/connect?token=$setup_token"
+          echo "WHATSAPP_BROWSER_SETUP_EXPIRES_AT=$expires_at"
+
       - name: List configured Worker secret names
         working-directory: viiversion/integration-service
         shell: bash
@@ -134,7 +146,7 @@ jobs:
           ready=0
           for attempt in $(seq 1 30); do
             code=$(curl -L -sS --connect-timeout 5 --max-time 15 -o /tmp/integration-health.json -w '%{http_code}' "$base/health?deploy=${GITHUB_SHA}" || true)
-            if [ "$code" = "200" ] && jq -e '.ok == true and .service == "viiversion-integration" and .bokun.vendorId == "137689" and .bokun.productId == "1287578"' /tmp/integration-health.json >/dev/null 2>&1; then
+            if [ "$code" = "200" ] && jq -e '.ok == true and .service == "viiversion-integration" and .bokun.vendorId == "137689" and .bokun.productId == "1287578" and .whatsapp.browserRunConfigured == true and .whatsapp.browserSetupConfigured == true' /tmp/integration-health.json >/dev/null 2>&1; then
               ready=1
               break
             fi
