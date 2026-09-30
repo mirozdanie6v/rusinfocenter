@@ -1,0 +1,97 @@
+name: Verify LoveTravel tour UI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.verify-love-tour-ui'
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Install browser
+        shell: bash
+        run: |
+          npm init -y >/dev/null 2>&1
+          npm install --no-fund --no-audit playwright@1.55.0
+          npx playwright install chromium
+
+      - name: Verify live tour UX
+        shell: bash
+        run: |
+          node <<'NODE'
+          const { chromium } = require('playwright');
+
+          const expected = {
+            '1287578': { photos: 15, rates: 7 },
+            '1287580': { photos: 7, rates: 4 },
+          };
+
+          const browser = await chromium.launch({headless:true});
+          const page = await browser.newPage({
+            viewport:{width:390,height:844},
+            isMobile:true,
+            hasTouch:true,
+          });
+
+          page.on('console', msg => console.log('[browser]', msg.type(), msg.text()));
+          await page.goto('https://lovetravel.viiversion.com', {waitUntil:'networkidle', timeout:60000});
+          await page.waitForFunction(() => typeof window.openTour === 'function', null, {timeout:30000});
+
+          for (const [productId, spec] of Object.entries(expected)) {
+            await page.evaluate(id => window.openTour(id), productId);
+            await page.waitForSelector('#tourScreen .lt-domain-shell', {timeout:30000});
+            await page.waitForFunction(id => document.querySelector('#tourScreen')?.dataset?.ltDomainProduct === id, productId, {timeout:30000});
+
+            const state = await page.evaluate(() => ({
+              productId:document.querySelector('#tourScreen')?.dataset?.ltDomainProduct || '',
+              thumbs:document.querySelectorAll('#tourScreen [data-lt-gallery-thumb]').length,
+              counter:document.querySelector('#tourScreen [data-lt-gallery-count]')?.textContent?.trim() || '',
+              rates:document.querySelectorAll('#tourScreen [data-lt-domain-rate]').length,
+              rateDescriptions:[...document.querySelectorAll('#tourScreen .lt-domain-rate__description')].map(x=>x.textContent.trim()),
+              rateMediaCounts:[...document.querySelectorAll('#tourScreen .lt-domain-rate__media')].map(x=>x.querySelectorAll('img').length),
+              activeRate:document.querySelectorAll('#tourScreen .lt-domain-rate.is-active').length,
+            }));
+
+            console.log('TOUR', productId, JSON.stringify(state));
+            if (state.thumbs !== spec.photos) throw new Error(productId + ': expected '+spec.photos+' gallery photos, got '+state.thumbs);
+            if (state.counter !== '1 / '+spec.photos) throw new Error(productId + ': unexpected gallery counter '+state.counter);
+            if (state.rates !== spec.rates) throw new Error(productId + ': expected '+spec.rates+' rate cards, got '+state.rates);
+            if (state.rateDescriptions.length !== spec.rates || state.rateDescriptions.some(x=>!x)) throw new Error(productId + ': missing rate descriptions');
+            if (state.rateMediaCounts.length !== spec.rates || state.rateMediaCounts.some(x=>x < 1)) throw new Error(productId + ': missing rate media');
+            if (state.activeRate !== 1) throw new Error(productId + ': exactly one rate must be active');
+
+            const firstThumb = page.locator('#tourScreen [data-lt-gallery-thumb]').nth(Math.min(2,spec.photos-1));
+            await firstThumb.click();
+            const counterAfterThumb = (await page.locator('#tourScreen [data-lt-gallery-count]').textContent()).trim();
+            if (counterAfterThumb !== Math.min(3,spec.photos)+' / '+spec.photos) throw new Error(productId + ': thumbnail navigation failed');
+
+            await page.locator('#tourScreen [data-lt-gallery-open]').click();
+            await page.waitForSelector('.lt-domain-lightbox');
+            const lightboxCount = (await page.locator('.lt-domain-lightbox [data-lt-lightbox-count]').textContent()).trim();
+            console.log('LIGHTBOX', productId, lightboxCount);
+            await page.locator('.lt-domain-lightbox [data-lt-lightbox-close]').first().click();
+            await page.waitForSelector('.lt-domain-lightbox', {state:'detached'});
+
+            if (spec.rates > 1) {
+              const target = page.locator('#tourScreen [data-lt-domain-rate]').nth(1);
+              const before = await page.evaluate(() => window.scrollY);
+              await target.click();
+              await page.waitForTimeout(250);
+              const active = await page.locator('#tourScreen [data-lt-domain-rate].is-active').count();
+              if (active !== 1) throw new Error(productId + ': rate selection did not preserve one active card');
+              const desc = (await page.locator('#tourScreen [data-lt-domain-rate].is-active .lt-domain-rate__description').textContent()).trim();
+              if (!desc) throw new Error(productId + ': selected rate description missing');
+              console.log('SELECTED_RATE', productId, desc.slice(0,120), 'scrollBefore', before, 'scrollAfter', await page.evaluate(()=>window.scrollY));
+            }
+          }
+
+          await browser.close();
+          NODE
