@@ -1,0 +1,35 @@
+name: Inspect LoveTravel live localization
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.inspect-love-localization-live'
+  workflow_dispatch:
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Inspect live RU VI KO
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://lovetravel.viiversion.com"
+          for lang in ru vi ko; do
+            echo "=== $lang ==="
+            curl -fsS "$base/api/bokun/domain?locale=$lang&start=2026-09-30&end=2026-10-02"               | jq '{
+                  locale,
+                  domains:[.domains[]|{
+                    id:.experience.id,
+                    title:.experience.title,
+                    description:.experience.description,
+                    included:.experience.content.included,
+                    excluded:.experience.content.excluded,
+                    requirements:.experience.content.requirements,
+                    attention:.experience.content.attention,
+                    dressCode:.experience.content.dressCode,
+                    localization
+                  }]
+                }'
+          done
