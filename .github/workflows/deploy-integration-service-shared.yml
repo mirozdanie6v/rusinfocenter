@@ -93,6 +93,18 @@ jobs:
           ensure_secret DATA_ENCRYPTION_KEY "$(openssl rand -hex 32)"
           ensure_secret INTEGRATION_ADMIN_TOKEN "$(openssl rand -hex 32)"
 
+      - name: Create short-lived Meta setup link
+        working-directory: viiversion/integration-service
+        shell: bash
+        run: |
+          set -euo pipefail
+          setup_token="$(openssl rand -hex 32)"
+          expires_at="$(date -u -d '+15 minutes' +%s)"
+          printf '%s' "$setup_token" | npx wrangler secret put META_SETUP_TOKEN --config wrangler.shared.jsonc >/dev/null
+          printf '%s' "$expires_at" | npx wrangler secret put META_SETUP_EXPIRES_AT --config wrangler.shared.jsonc >/dev/null
+          echo "META_SETUP_URL=https://integration.viiversion.com/whatsapp/meta-setup?token=$setup_token"
+          echo "META_SETUP_EXPIRES_AT=$expires_at"
+
       - name: List configured Worker secret names
         working-directory: viiversion/integration-service
         shell: bash
