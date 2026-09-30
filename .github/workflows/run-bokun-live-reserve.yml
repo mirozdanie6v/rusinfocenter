@@ -1,0 +1,137 @@
+name: Run approved Bókun live reserve
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.run-bokun-live-reserve.json'
+
+permissions:
+  contents: read
+
+jobs:
+  reserve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      WORKER_NAME: viiversion-integration
+      INTEGRATION_BASE: https://integration.viiversion.com
+      VENDOR_ID: '137689'
+
+    steps:
+      - name: Checkout command
+        uses: actions/checkout@v5
+        with:
+          path: ric
+
+      - name: Checkout integration source
+        uses: actions/checkout@v5
+        with:
+          repository: mirozdanie6v/viiversion
+          ref: main
+          path: viiversion
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Validate explicit client approval command
+        shell: bash
+        run: |
+          set -euo pipefail
+          command='ric/.run-bokun-live-reserve.json'
+          jq . "$command"
+          jq -e '
+            .approved == true and
+            .clientApproval == "NHA_TRANG_LOVE_TRAVEL_CONFIRMED" and
+            (.bookingRequest | type == "object") and
+            (.bookingRequest.externalBookingReference | startswith("LT-TEST-")) and
+            (.bookingRequest.sendCustomerNotification != true) and
+            (.bookingRequest.activityBookings | length == 1) and
+            ([1287578,1287580] | index(.bookingRequest.activityBookings[0].activityId) != null)
+          ' "$command" >/dev/null
+
+      - name: Install Wrangler and prepare Worker config
+        working-directory: viiversion/integration-service
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
+          npm install --no-fund --no-audit
+          node <<'NODE'
+          const fs = require('fs');
+          const cfg = JSON.parse(fs.readFileSync('wrangler.jsonc', 'utf8'));
+          cfg.name = process.env.WORKER_NAME;
+          delete cfg.routes;
+          fs.writeFileSync('wrangler.shared.jsonc', JSON.stringify(cfg, null, 2) + '\n');
+          NODE
+
+      - name: Arm one-time Bókun booking token
+        id: arm
+        working-directory: viiversion/integration-service
+        shell: bash
+        run: |
+          set -euo pipefail
+          token="$(openssl rand -hex 32)"
+          echo "::add-mask::$token"
+          printf '%s' "$token" | npx wrangler secret put BOKUN_BOOKING_TEST_TOKEN --config wrangler.shared.jsonc >/dev/null
+          echo "token=$token" >> "$GITHUB_OUTPUT"
+
+      - name: Revalidate checkout and create reserved booking
+        shell: bash
+        env:
+          BOOKING_TEST_TOKEN: ${{ steps.arm.outputs.token }}
+        run: |
+          set -euo pipefail
+          jq '.bookingRequest' ric/.run-bokun-live-reserve.json > /tmp/booking.json
+
+          curl -fsS             -X POST "$INTEGRATION_BASE/api/bokun/checkout/options?vendorId=$VENDOR_ID&currency=USD"             -H 'content-type: application/json'             --data-binary @/tmp/booking.json > /tmp/options.json
+
+          option="$(jq -r '
+            .options[]? |
+            select((.paymentMethods.allowedMethods // []) | index("RESERVE_FOR_EXTERNAL_PAYMENT")) |
+            .type
+          ' /tmp/options.json | head -n1)"
+          test -n "$option"
+
+          jq --arg option "$option" '{
+            checkoutOption:$option,
+            paymentMethod:"RESERVE_FOR_EXTERNAL_PAYMENT",
+            source:"DIRECT_REQUEST",
+            directBooking: .,
+            sendNotificationToMainContact:false,
+            showPricesInNotification:false
+          }' /tmp/booking.json > /tmp/checkout.json
+
+          curl -fsS             -X POST "$INTEGRATION_BASE/admin/bokun/checkout/submit-reserve?vendorId=$VENDOR_ID&currency=USD"             -H 'content-type: application/json'             -H 'x-viiversion-booking-intent: RESERVE_REAL_BOKUN_BOOKING'             -H "x-viiversion-booking-test-token: $BOOKING_TEST_TOKEN"             --data-binary @/tmp/checkout.json > /tmp/reserve.json
+
+          jq . /tmp/reserve.json
+          jq -e 'type == "object" and (has("error") | not)' /tmp/reserve.json >/dev/null
+
+      - name: Disarm one-time booking token
+        if: always()
+        working-directory: viiversion/integration-service
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'y\n' | npx wrangler secret delete BOKUN_BOOKING_TEST_TOKEN --config wrangler.shared.jsonc || true
+
+      - name: Verify test token is disarmed
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 10); do
+            curl -fsS "$INTEGRATION_BASE/api/bokun/status?vendorId=$VENDOR_ID" > /tmp/status.json
+            if jq -e '.oneTimeBookingTestArmed == false' /tmp/status.json >/dev/null; then
+              jq '{ok,vendorId,realBookingWriteEnabled,oneTimeBookingTestArmed}' /tmp/status.json
+              exit 0
+            fi
+            sleep 2
+          done
+          jq . /tmp/status.json
+          exit 1
