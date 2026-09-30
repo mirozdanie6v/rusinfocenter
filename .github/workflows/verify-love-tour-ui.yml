@@ -51,15 +51,25 @@ jobs:
             await page.waitForSelector('#tourScreen .lt-domain-shell', {timeout:30000});
             await page.waitForFunction(id => document.querySelector('#tourScreen')?.dataset?.ltDomainProduct === id, productId, {timeout:30000});
 
-            const state = await page.evaluate(() => ({
-              productId:document.querySelector('#tourScreen')?.dataset?.ltDomainProduct || '',
-              thumbs:document.querySelectorAll('#tourScreen [data-lt-gallery-thumb]').length,
-              counter:document.querySelector('#tourScreen [data-lt-gallery-count]')?.textContent?.trim() || '',
-              rates:document.querySelectorAll('#tourScreen [data-lt-domain-rate]').length,
-              rateDescriptions:[...document.querySelectorAll('#tourScreen .lt-domain-rate__description')].map(x=>x.textContent.trim()),
-              rateMediaCounts:[...document.querySelectorAll('#tourScreen .lt-domain-rate__media')].map(x=>x.querySelectorAll('img').length),
-              activeRate:document.querySelectorAll('#tourScreen .lt-domain-rate.is-active').length,
-            }));
+            const state = await page.evaluate(() => {
+              const tour=document.querySelector('#tourScreen');
+              const quick=document.querySelector('#tourScreen .lt-domain-quickbook');
+              const activeRate=document.querySelector('#tourScreen .lt-domain-rate.is-active');
+              const activeDate=document.querySelector('#tourScreen .lt-domain-date.is-active');
+              return {
+                productId:tour?.dataset?.ltDomainProduct || '',
+                thumbs:document.querySelectorAll('#tourScreen [data-lt-gallery-thumb]').length,
+                counter:document.querySelector('#tourScreen [data-lt-gallery-count]')?.textContent?.trim() || '',
+                rates:document.querySelectorAll('#tourScreen [data-lt-domain-rate]').length,
+                rateDescriptions:[...document.querySelectorAll('#tourScreen .lt-domain-rate__description')].map(x=>x.textContent.trim()),
+                rateMediaCounts:[...document.querySelectorAll('#tourScreen .lt-domain-rate__media')].map(x=>x.querySelectorAll('img').length),
+                activeRate:document.querySelectorAll('#tourScreen .lt-domain-rate.is-active').length,
+                tourBackground:getComputedStyle(tour).backgroundImage,
+                quickBackground:quick?getComputedStyle(quick).backgroundImage:'',
+                activeRateBackground:activeRate?getComputedStyle(activeRate).backgroundImage:'',
+                activeDateBackground:activeDate?getComputedStyle(activeDate).backgroundImage:'',
+              };
+            });
 
             console.log('TOUR', productId, JSON.stringify(state));
             if (state.thumbs !== spec.photos) throw new Error(productId + ': expected '+spec.photos+' gallery photos, got '+state.thumbs);
@@ -68,6 +78,15 @@ jobs:
             if (state.rateDescriptions.length !== spec.rates || state.rateDescriptions.some(x=>!x)) throw new Error(productId + ': missing rate descriptions');
             if (state.rateMediaCounts.length !== spec.rates || state.rateMediaCounts.some(x=>x < 1)) throw new Error(productId + ': missing rate media');
             if (state.activeRate !== 1) throw new Error(productId + ': exactly one rate must be active');
+            if (!state.tourBackground.includes('gradient')) throw new Error(productId + ': page background is not gradient: '+state.tourBackground);
+            if (!state.quickBackground.includes('gradient')) throw new Error(productId + ': quick booking CTA is not gradient: '+state.quickBackground);
+            if (!state.activeRateBackground.includes('gradient')) throw new Error(productId + ': active rate is not gradient-accented: '+state.activeRateBackground);
+            console.log('PALETTE', productId, JSON.stringify({
+              tourBackground:state.tourBackground,
+              quickBackground:state.quickBackground,
+              activeRateBackground:state.activeRateBackground,
+              activeDateBackground:state.activeDateBackground,
+            }));
 
             const firstThumb = page.locator('#tourScreen [data-lt-gallery-thumb]').nth(Math.min(2,spec.photos-1));
             await firstThumb.evaluate(el => el.click());
