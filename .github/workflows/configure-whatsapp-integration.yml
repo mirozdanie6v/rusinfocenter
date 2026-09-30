@@ -1,4 +1,4 @@
-name: Configure VIIVERSION WhatsApp Secrets
+name: Configure VIIVERSION WhatsApp Coexistence
 
 on:
   workflow_dispatch:
@@ -18,10 +18,10 @@ jobs:
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      META_WHATSAPP_ACCESS_TOKEN: ${{ secrets.META_WHATSAPP_ACCESS_TOKEN }}
-      META_WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.META_WHATSAPP_PHONE_NUMBER_ID }}
-      META_WHATSAPP_VERIFY_TOKEN: ${{ secrets.META_WHATSAPP_VERIFY_TOKEN }}
+      META_APP_ID: ${{ secrets.META_APP_ID }}
       META_APP_SECRET: ${{ secrets.META_APP_SECRET }}
+      META_EMBEDDED_SIGNUP_CONFIG_ID: ${{ secrets.META_EMBEDDED_SIGNUP_CONFIG_ID }}
+      META_WHATSAPP_VERIFY_TOKEN: ${{ secrets.META_WHATSAPP_VERIFY_TOKEN }}
       WORKER_NAME: viiversion-integration
 
     steps:
@@ -40,7 +40,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID META_WHATSAPP_ACCESS_TOKEN META_WHATSAPP_PHONE_NUMBER_ID META_WHATSAPP_VERIFY_TOKEN META_APP_SECRET; do
+          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID META_APP_ID META_APP_SECRET META_EMBEDDED_SIGNUP_CONFIG_ID META_WHATSAPP_VERIFY_TOKEN; do
             test -n "${!name:-}" || { echo "$name is missing"; exit 1; }
           done
 
@@ -61,7 +61,7 @@ jobs:
           fs.writeFileSync('wrangler.shared.jsonc', JSON.stringify(cfg, null, 2) + '\n');
           NODE
 
-      - name: Apply WhatsApp secrets to Worker
+      - name: Apply Coexistence configuration to Worker
         working-directory: viiversion/integration-service
         shell: bash
         run: |
@@ -72,19 +72,19 @@ jobs:
             printf '%s' "$value" | npx wrangler secret put "$name" --config wrangler.shared.jsonc >/dev/null
             echo "$name configured."
           }
-          put_secret META_WHATSAPP_ACCESS_TOKEN "$META_WHATSAPP_ACCESS_TOKEN"
-          put_secret META_WHATSAPP_PHONE_NUMBER_ID "$META_WHATSAPP_PHONE_NUMBER_ID"
-          put_secret META_WHATSAPP_VERIFY_TOKEN "$META_WHATSAPP_VERIFY_TOKEN"
+          put_secret META_APP_ID "$META_APP_ID"
           put_secret META_APP_SECRET "$META_APP_SECRET"
+          put_secret META_EMBEDDED_SIGNUP_CONFIG_ID "$META_EMBEDDED_SIGNUP_CONFIG_ID"
+          put_secret META_WHATSAPP_VERIFY_TOKEN "$META_WHATSAPP_VERIFY_TOKEN"
 
-      - name: Verify secret names and production health
+      - name: Verify configuration names and production health
         working-directory: viiversion/integration-service
         shell: bash
         run: |
           set -euo pipefail
           names="$(npx wrangler secret list --config wrangler.shared.jsonc)"
-          for name in META_WHATSAPP_ACCESS_TOKEN META_WHATSAPP_PHONE_NUMBER_ID META_WHATSAPP_VERIFY_TOKEN META_APP_SECRET; do
+          for name in META_APP_ID META_APP_SECRET META_EMBEDDED_SIGNUP_CONFIG_ID META_WHATSAPP_VERIFY_TOKEN; do
             echo "$names" | jq -e --arg name "$name" 'map(.name) | index($name) != null' >/dev/null
           done
-          curl -fsS https://integration.viiversion.com/health | jq -e '.ok == true and .whatsapp.configured == true' >/dev/null
-          echo 'WhatsApp Worker credentials are configured.'
+          curl -fsS https://integration.viiversion.com/health | jq -e '.ok == true and .whatsapp.embeddedSignupConfigured == true and .whatsapp.webhookConfigured == true' >/dev/null
+          echo 'WhatsApp Coexistence configuration is ready.'
