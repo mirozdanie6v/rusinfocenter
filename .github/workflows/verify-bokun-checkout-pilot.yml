@@ -1,0 +1,104 @@
+name: Verify Bókun checkout pilot safely
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.verify-bokun-checkout-pilot'
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify production guard and live checkout options
+        shell: bash
+        run: |
+          set -euo pipefail
+          integration='https://integration.viiversion.com'
+          vendor='137689'
+          product='1287578'
+          start='2026-10-01'
+          end='2026-10-05'
+
+          curl -fsS "$integration/api/bokun/status?vendorId=$vendor" > /tmp/status.json
+          jq . /tmp/status.json
+          jq -e '
+            .oauthConnected == true and
+            .restCredentialsReady == true and
+            .checkoutOptionsAvailable == true and
+            .realBookingWriteEnabled == false
+          ' /tmp/status.json >/dev/null
+
+          curl -fsS "$integration/api/bokun/availability?vendorId=$vendor&productId=$product&start=$start&end=$end&currency=USD" > /tmp/availability.json
+          jq -e 'length > 0' /tmp/availability.json >/dev/null
+
+          slot_id="$(jq -r 'map(select(.soldOut != true and .unavailable != true and (.pricesByRate|length)>0)) | .[0].id // empty' /tmp/availability.json)"
+          start_time_id="$(jq -r --arg id "$slot_id" '.[] | select(.id==$id) | .startTimeId' /tmp/availability.json)"
+          rate_id="$(jq -r --arg id "$slot_id" '.[] | select(.id==$id) | .pricesByRate[0].activityRateId' /tmp/availability.json)"
+          category_id="$(jq -r --arg id "$slot_id" '.[] | select(.id==$id) | .pricesByRate[0].pricePerCategoryUnit[0].id' /tmp/availability.json)"
+          date="$(printf '%s' "$slot_id" | sed -nE 's/.*_([0-9]{4})([0-9]{2})([0-9]{2})$/\1-\2-\3/p')"
+
+          test -n "$slot_id"
+          test -n "$start_time_id"
+          test -n "$rate_id"
+          test -n "$category_id"
+          test -n "$date"
+
+          jq -n \
+            --argjson activityId "$product" \
+            --argjson rateId "$rate_id" \
+            --argjson startTimeId "$start_time_id" \
+            --argjson categoryId "$category_id" \
+            --arg date "$date" \
+            --arg ref "LT-TEST-OPTIONS-${GITHUB_RUN_ID}" \
+            '{
+              mainContactDetails:[
+                {questionId:"firstName",values:["VIIVERSION"]},
+                {questionId:"lastName",values:["Checkout Test"]},
+                {questionId:"email",values:["booking-test@viiversion.com"]},
+                {questionId:"phoneNumber",values:["+84900000000"]}
+              ],
+              activityBookings:[{
+                activityId:$activityId,
+                rateId:$rateId,
+                startTimeId:$startTimeId,
+                date:$date,
+                pickup:false,
+                dropoff:false,
+                checkedIn:false,
+                customized:false,
+                passengers:[{pricingCategoryId:$categoryId}]
+              }],
+              sendCustomerNotification:false,
+              externalBookingReference:$ref,
+              externalBookingEntityName:"VIIVERSION",
+              externalBookingEntityCode:"LOVE_TRAVEL"
+            }' > /tmp/booking-request.json
+
+          echo '=== SAFE BOOKING REQUEST ==='
+          jq . /tmp/booking-request.json
+          echo '=== LIVE CHECKOUT OPTIONS ==='
+          curl -fsS \
+            -X POST "$integration/api/bokun/checkout/options?vendorId=$vendor&currency=USD" \
+            -H 'content-type: application/json' \
+            --data-binary @/tmp/booking-request.json > /tmp/options.json
+          jq . /tmp/options.json
+
+          jq -e '
+            [(.options // .)[]? |
+              select((.paymentMethods.allowedMethods // []) | index("RESERVE_FOR_EXTERNAL_PAYMENT"))
+            ] | length > 0
+          ' /tmp/options.json >/dev/null
+
+          echo '=== REAL SUBMIT MUST NOT BE PUBLICLY CALLABLE ==='
+          code="$(curl -sS -o /tmp/submit-probe.txt -w '%{http_code}' \
+            -X POST "$integration/admin/bokun/checkout/submit-reserve?vendorId=$vendor&currency=USD" \
+            -H 'content-type: application/json' \
+            -H 'x-viiversion-booking-intent: RESERVE_REAL_BOKUN_BOOKING' \
+            --data '{}')"
+          cat /tmp/submit-probe.txt
+          test "$code" = "401"
+
+          echo '{"ok":true,"checkoutOptions":"live","reserveForExternalPayment":true,"realSubmit":"disabled-and-admin-protected","bookingCreated":false}'
