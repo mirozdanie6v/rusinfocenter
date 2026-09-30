@@ -93,11 +93,11 @@ jobs:
           ready=0
           for attempt in $(seq 1 36); do
             code=$(curl -L -sS --connect-timeout 5 --max-time 20               -o /tmp/brand-init.json -w '%{http_code}'               -X POST "$base/mcp?deploy=${GITHUB_SHA}"               -H 'content-type: application/json'               -H 'accept: application/json, text/event-stream'               --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"ric-shared-deploy","version":"1"}}}' || true)
-            if [ "$code" = "200" ] && jq -e '.result.serverInfo.name == "viiversion-brand-agent" and .result.serverInfo.version == "0.4.0"' /tmp/brand-init.json >/dev/null 2>&1; then
+            if [ "$code" = "200" ] && jq -e '.result.serverInfo.name == "viiversion-brand-agent" and .result.serverInfo.version == "0.5.0"' /tmp/brand-init.json >/dev/null 2>&1; then
               ready=1
               break
             fi
-            echo "Brand Agent v0.4.0 not ready yet (attempt $attempt, HTTP $code)"
+            echo "Brand Agent v0.5.0 not ready yet (attempt $attempt, HTTP $code)"
             sleep 5
           done
           test "$ready" -eq 1
@@ -113,7 +113,7 @@ jobs:
           jq -r '[.result.tools[].name] | sort | .[]' /tmp/brand-tools.json
           jq -e '
             ([.result.tools[].name] | sort) ==
-            (["evaluate_market_signal","get_brand_context","get_distribution_routes","get_live_source_plan","get_market_context","get_priority_entities","get_proof","plan_agent_roles","plan_brand_task","plan_gtm_motion","plan_market_projection","plan_productization","validate_brand_output","validate_live_context"] | sort)
+            (["accept_agent_artifact","create_agent_run","evaluate_market_signal","execute_agent_role","get_agent_run","get_brand_context","get_distribution_routes","get_live_source_plan","get_market_context","get_priority_entities","get_proof","plan_agent_roles","plan_brand_task","plan_gtm_motion","plan_market_projection","plan_productization","reject_agent_artifact","validate_brand_output","validate_live_context"] | sort)
           ' /tmp/brand-tools.json >/dev/null
 
           curl -fsS -X POST "$base/mcp"             -H 'content-type: application/json'             -H 'accept: application/json, text/event-stream'             --data '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"get_brand_context","arguments":{"surface":"website","audience":"SME owner","goal":"clarity"}}}'             > /tmp/brand-context.json
@@ -144,6 +144,81 @@ jobs:
             (.result.structuredContent.route | index("brand-qa") != null)
           ' /tmp/brand-role-plan.json >/dev/null
           echo 'VIIVERSION Brand specialist role routing QA PASS.'
+
+      - name: Verify Workers AI specialist execution and handoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://${TARGET_DOMAIN}"
+          run_id="brand-smoke-${GITHUB_RUN_ID}"
+
+          curl -fsS -X POST "$base/mcp" \
+            -H 'content-type: application/json' \
+            --data "{"jsonrpc":"2.0","id":40,"method":"tools/call","params":{"name":"create_agent_run","arguments":{"run_id":"${run_id}","task":"Explain the canonical VIIVERSION brand identity without changing canon."}}}" \
+            > /tmp/brand-run-create.json
+
+          jq -e '
+            .result.structuredContent.status == "ACTIVE" and
+            .result.structuredContent.nextRole == "brand-strategy" and
+            (.result.structuredContent.route | index("brand-qa") != null)
+          ' /tmp/brand-run-create.json >/dev/null
+
+          curl -fsS -X POST "$base/mcp" \
+            -H 'content-type: application/json' \
+            --data "{"jsonrpc":"2.0","id":41,"method":"tools/call","params":{"name":"execute_agent_role","arguments":{"run_id":"${run_id}","role":"brand-strategy","invocation_id":"smoke-brand-strategy-v1"}}}" \
+            > /tmp/brand-role-execute.json
+
+          jq -e '
+            .result.structuredContent.role == "brand-strategy" and
+            .result.structuredContent.model == "@cf/meta/llama-3.3-70b-instruct-fp8-fast" and
+            .result.structuredContent.artifact.type == "brand-decision" and
+            .result.structuredContent.artifact.status == "PENDING" and
+            .result.structuredContent.artifact.validation.status == "PASS"
+          ' /tmp/brand-role-execute.json >/dev/null
+
+          artifact_id=$(jq -r '.result.structuredContent.artifact.artifactId' /tmp/brand-role-execute.json)
+          test -n "$artifact_id"
+
+          curl -fsS -X POST "$base/mcp" \
+            -H 'content-type: application/json' \
+            --data "{"jsonrpc":"2.0","id":42,"method":"tools/call","params":{"name":"accept_agent_artifact","arguments":{"run_id":"${run_id}","artifact_id":"${artifact_id}"}}}" \
+            > /tmp/brand-artifact-accept.json
+
+          jq -e '
+            .result.structuredContent.status == "ACTIVE" and
+            .result.structuredContent.nextRole == "brand-qa" and
+            (.result.structuredContent.acceptedArtifacts | length) == 1 and
+            .result.structuredContent.acceptedArtifacts[0].type == "brand-decision" and
+            .result.structuredContent.acceptedArtifacts[0].status == "ACCEPTED"
+          ' /tmp/brand-artifact-accept.json >/dev/null
+
+          curl -fsS -X POST "$base/mcp" \
+            -H 'content-type: application/json' \
+            --data "{"jsonrpc":"2.0","id":43,"method":"tools/call","params":{"name":"get_agent_run","arguments":{"run_id":"${run_id}"}}}" \
+            > /tmp/brand-run-read.json
+
+          jq -e '
+            .result.structuredContent.nextRole == "brand-qa" and
+            ([.result.structuredContent.audit[].event] | index("ROLE_EXECUTED") != null) and
+            ([.result.structuredContent.audit[].event] | index("ARTIFACT_ACCEPTED") != null) and
+            ([.result.structuredContent.audit[].event] | index("HANDOFF_READY") != null)
+          ' /tmp/brand-run-read.json >/dev/null
+
+          source_run_id="brand-source-guard-${GITHUB_RUN_ID}"
+          curl -fsS -X POST "$base/mcp" \
+            -H 'content-type: application/json' \
+            --data "{"jsonrpc":"2.0","id":44,"method":"tools/call","params":{"name":"create_agent_run","arguments":{"run_id":"${source_run_id}","task":"What is the current Booking sellability?","current_state":true}}}" \
+            > /tmp/brand-source-create.json
+
+          jq -e '.result.structuredContent.nextRole == "source-truth"' /tmp/brand-source-create.json >/dev/null
+
+          curl -fsS -X POST "$base/mcp" \
+            -H 'content-type: application/json' \
+            --data "{"jsonrpc":"2.0","id":45,"method":"tools/call","params":{"name":"execute_agent_role","arguments":{"run_id":"${source_run_id}","role":"source-truth","invocation_id":"smoke-source-guard-v1"}}}" \
+            > /tmp/brand-source-guard.json
+
+          jq -e '.error.message | contains("SOURCE_EVIDENCE_REQUIRED")' /tmp/brand-source-guard.json >/dev/null
+          echo 'VIIVERSION Brand Workers AI role execution + Durable Object handoff QA PASS.'
 
       - name: Verify GTM / productization tools
         shell: bash
