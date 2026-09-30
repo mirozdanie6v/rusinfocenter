@@ -244,6 +244,24 @@ jobs:
 
           echo 'VIIVERSION Brand Workers AI role execution + Durable Object handoff QA PASS.'
 
+      - name: Verify autonomous Brand run
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://${TARGET_DOMAIN}"
+          run_id="brand-auto-${GITHUB_RUN_ID}"
+          evidence='[{"evidenceId":"live-e2e","source":"VIIVERSION live source bundle","content":"VIIVERSION is a global engineering product company. DIR-ENG and DIR-SW are canonical. P07 Booking engine is Sell now. A01 MAX TOUR is a Full-stack demo; A03 UNIQ SMART RENT is a Production-oriented demo. Proof maturity must not be upgraded. Website must lead with clarity and proof. GTM uses Entity × Market × Audience × Channel × Language × Goal."}]'
+          payload=$(jq -nc --arg run_id "$run_id" --argjson evidence "$evidence" '{jsonrpc:"2.0",id:60,method:"tools/call",params:{name:"run_brand_task",arguments:{run_id:$run_id,task:"Create the current final public VIIVERSION Booking Engine website projection and GTM direction for an international SME audience, with proof and independent QA.",surface:"website",current_state:true,final_public:true,max_rework_cycles:2,source_evidence:$evidence}}}')
+          curl -fsS --max-time 180 -X POST "$base/mcp" -H 'content-type: application/json' --data "$payload" > /tmp/brand-auto.json
+          jq -e '
+            .result.structuredContent.status == "COMPLETED" and
+            (.result.structuredContent.route | length) == 7 and
+            ([.result.structuredContent.acceptedArtifacts[] | select(.type == "qa-report") | .payload.decision] | last) == "PASS" and
+            (.result.structuredContent.finalResult.answer | length) > 20 and
+            ([.result.structuredContent.audit[].event] | index("FINAL_RESULT_ASSEMBLED") != null)
+          ' /tmp/brand-auto.json >/dev/null
+          echo 'VIIVERSION Brand autonomous E2E PASS.'
+
       - name: Verify GTM / productization tools
         shell: bash
         run: |
