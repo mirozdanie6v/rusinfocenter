@@ -259,7 +259,7 @@ jobs:
             ([.result.structuredContent.acceptedArtifacts[] | select(.type == "qa-report") | .payload.decision] | last) == "PASS" and
             (.result.structuredContent.finalResult.answer | length) > 20 and
             ([.result.structuredContent.audit[].event] | index("FINAL_RESULT_ASSEMBLED") != null)
-          ' /tmp/brand-auto.json >/dev/null
+          ' /tmp/brand-auto.json >/dev/null || { echo "autonomous response:"; cat /tmp/brand-auto.json; exit 1; }
           echo 'VIIVERSION Brand autonomous E2E PASS.'
 
       - name: Verify GTM / productization tools
