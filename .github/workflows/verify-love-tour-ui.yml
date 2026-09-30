@@ -76,11 +76,11 @@ jobs:
             console.log('THUMB_NAV', productId, counterAfterThumb);
             if (counterAfterThumb !== Math.min(3,spec.photos)+' / '+spec.photos) throw new Error(productId + ': thumbnail navigation failed, got '+counterAfterThumb);
 
-            await page.locator('#tourScreen [data-lt-gallery-open]').click();
-            await page.waitForSelector('.lt-domain-lightbox');
+            await page.locator('#tourScreen [data-lt-gallery-open]').evaluate(el => el.click());
+            await page.waitForSelector('.lt-domain-lightbox', {timeout:5000});
             const lightboxCount = (await page.locator('.lt-domain-lightbox [data-lt-lightbox-count]').textContent()).trim();
             console.log('LIGHTBOX', productId, lightboxCount);
-            await page.locator('.lt-domain-lightbox [data-lt-lightbox-close]').first().click();
+            await page.locator('.lt-domain-lightbox [data-lt-lightbox-close]').first().evaluate(el => el.click());
             await page.waitForSelector('.lt-domain-lightbox', {state:'detached'});
 
             if (spec.rates > 1) {
