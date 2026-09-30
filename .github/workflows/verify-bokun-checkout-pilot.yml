@@ -28,7 +28,8 @@ jobs:
             .oauthConnected == true and
             .restCredentialsReady == true and
             .checkoutOptionsAvailable == true and
-            .realBookingWriteEnabled == false
+            .realBookingWriteEnabled == false and
+            .oneTimeBookingTestArmed == false
           ' /tmp/status.json >/dev/null
 
           curl -fsS "$integration/api/bokun/availability?vendorId=$vendor&productId=$product&start=$start&end=$end&currency=USD" > /tmp/availability.json
