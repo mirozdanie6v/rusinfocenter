@@ -99,7 +99,7 @@ jobs:
         run: |
           set -euo pipefail
           setup_token="$(openssl rand -hex 32)"
-          expires_at="$(date -u -d '+15 minutes' +%s)"
+          expires_at="$(date -u -d '+60 minutes' +%s)"
           printf '%s' "$setup_token" | npx wrangler secret put META_SETUP_TOKEN --config wrangler.shared.jsonc >/dev/null
           printf '%s' "$expires_at" | npx wrangler secret put META_SETUP_EXPIRES_AT --config wrangler.shared.jsonc >/dev/null
           echo "META_SETUP_URL=https://integration.viiversion.com/whatsapp/meta-setup?token=$setup_token"
