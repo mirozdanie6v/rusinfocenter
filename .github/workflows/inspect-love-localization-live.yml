@@ -11,25 +11,35 @@ jobs:
   inspect:
     runs-on: ubuntu-latest
     steps:
-      - name: Inspect live RU VI KO
+      - name: Inspect live Bókun domains
         shell: bash
         run: |
           set -euo pipefail
           base="https://lovetravel.viiversion.com"
-          for lang in ru vi ko; do
-            echo "=== $lang ==="
-            curl -fsS "$base/api/bokun/domain?locale=$lang&start=2026-09-30&end=2026-10-02"               | jq '{
-                  locale,
-                  domains:[.domains[]|{
-                    id:.experience.id,
-                    title:.experience.title,
-                    description:.experience.description,
-                    included:.experience.content.included,
-                    excluded:.experience.content.excluded,
-                    requirements:.experience.content.requirements,
-                    attention:.experience.content.attention,
-                    dressCode:.experience.content.dressCode,
-                    localization
-                  }]
-                }'
-          done
+          curl -fsS "$base/api/bokun/domain?locale=en&start=2026-09-30&end=2026-10-07&includePickupPlaces=1"             | jq '{
+                schema,
+                domains:[.domains[]|{
+                  id:.experience.id,
+                  title:.experience.title,
+                  description:.experience.description,
+                  duration:.experience.duration,
+                  languages:.experience.languages,
+                  content:.experience.content,
+                  itinerary:.experience.itinerary,
+                  media:{
+                    photos:(.experience.media.photos|map({url,alt})),
+                    videos:.experience.media.videos
+                  },
+                  meeting:.experience.meeting,
+                  pickup:.experience.pickup,
+                  accessibility:.experience.accessibility,
+                  rates:(.rates|map({id,title,description,pickup,dropoff,details,textItems})),
+                  participants:.participants,
+                  extras:.extras,
+                  offers:.offers,
+                  questions:.bookingRequirements.questions,
+                  customFields:.bookingRequirements.customFields,
+                  cancellationPolicy:.cancellationPolicy,
+                  slots:(.availabilitySlots|length)
+                }]
+              }'
