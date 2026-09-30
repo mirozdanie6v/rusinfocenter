@@ -152,10 +152,14 @@ jobs:
           base="https://${TARGET_DOMAIN}"
           run_id="brand-smoke-${GITHUB_RUN_ID}"
 
-          curl -fsS -X POST "$base/mcp" \
-            -H 'content-type: application/json' \
-            --data "{"jsonrpc":"2.0","id":40,"method":"tools/call","params":{"name":"create_agent_run","arguments":{"run_id":"${run_id}","task":"Explain the canonical VIIVERSION brand identity without changing canon."}}}" \
-            > /tmp/brand-run-create.json
+          payload=$(jq -nc --arg run_id "$run_id" '{
+            jsonrpc:"2.0",id:40,method:"tools/call",
+            params:{name:"create_agent_run",arguments:{
+              run_id:$run_id,
+              task:"Explain the canonical VIIVERSION brand identity without changing canon."
+            }}
+          }')
+          curl -fsS -X POST "$base/mcp" -H 'content-type: application/json' --data "$payload" > /tmp/brand-run-create.json
 
           jq -e '
             .result.structuredContent.status == "ACTIVE" and
@@ -163,10 +167,15 @@ jobs:
             (.result.structuredContent.route | index("brand-qa") != null)
           ' /tmp/brand-run-create.json >/dev/null
 
-          curl -fsS -X POST "$base/mcp" \
-            -H 'content-type: application/json' \
-            --data "{"jsonrpc":"2.0","id":41,"method":"tools/call","params":{"name":"execute_agent_role","arguments":{"run_id":"${run_id}","role":"brand-strategy","invocation_id":"smoke-brand-strategy-v1"}}}" \
-            > /tmp/brand-role-execute.json
+          payload=$(jq -nc --arg run_id "$run_id" '{
+            jsonrpc:"2.0",id:41,method:"tools/call",
+            params:{name:"execute_agent_role",arguments:{
+              run_id:$run_id,
+              role:"brand-strategy",
+              invocation_id:"smoke-brand-strategy-v1"
+            }}
+          }')
+          curl -fsS -X POST "$base/mcp" -H 'content-type: application/json' --data "$payload" > /tmp/brand-role-execute.json
 
           jq -e '
             .result.structuredContent.role == "brand-strategy" and
@@ -178,11 +187,16 @@ jobs:
 
           artifact_id=$(jq -r '.result.structuredContent.artifact.artifactId' /tmp/brand-role-execute.json)
           test -n "$artifact_id"
+          test "$artifact_id" != "null"
 
-          curl -fsS -X POST "$base/mcp" \
-            -H 'content-type: application/json' \
-            --data "{"jsonrpc":"2.0","id":42,"method":"tools/call","params":{"name":"accept_agent_artifact","arguments":{"run_id":"${run_id}","artifact_id":"${artifact_id}"}}}" \
-            > /tmp/brand-artifact-accept.json
+          payload=$(jq -nc --arg run_id "$run_id" --arg artifact_id "$artifact_id" '{
+            jsonrpc:"2.0",id:42,method:"tools/call",
+            params:{name:"accept_agent_artifact",arguments:{
+              run_id:$run_id,
+              artifact_id:$artifact_id
+            }}
+          }')
+          curl -fsS -X POST "$base/mcp" -H 'content-type: application/json' --data "$payload" > /tmp/brand-artifact-accept.json
 
           jq -e '
             .result.structuredContent.status == "ACTIVE" and
@@ -192,10 +206,11 @@ jobs:
             .result.structuredContent.acceptedArtifacts[0].status == "ACCEPTED"
           ' /tmp/brand-artifact-accept.json >/dev/null
 
-          curl -fsS -X POST "$base/mcp" \
-            -H 'content-type: application/json' \
-            --data "{"jsonrpc":"2.0","id":43,"method":"tools/call","params":{"name":"get_agent_run","arguments":{"run_id":"${run_id}"}}}" \
-            > /tmp/brand-run-read.json
+          payload=$(jq -nc --arg run_id "$run_id" '{
+            jsonrpc:"2.0",id:43,method:"tools/call",
+            params:{name:"get_agent_run",arguments:{run_id:$run_id}}
+          }')
+          curl -fsS -X POST "$base/mcp" -H 'content-type: application/json' --data "$payload" > /tmp/brand-run-read.json
 
           jq -e '
             .result.structuredContent.nextRole == "brand-qa" and
@@ -205,19 +220,28 @@ jobs:
           ' /tmp/brand-run-read.json >/dev/null
 
           source_run_id="brand-source-guard-${GITHUB_RUN_ID}"
-          curl -fsS -X POST "$base/mcp" \
-            -H 'content-type: application/json' \
-            --data "{"jsonrpc":"2.0","id":44,"method":"tools/call","params":{"name":"create_agent_run","arguments":{"run_id":"${source_run_id}","task":"What is the current Booking sellability?","current_state":true}}}" \
-            > /tmp/brand-source-create.json
-
+          payload=$(jq -nc --arg run_id "$source_run_id" '{
+            jsonrpc:"2.0",id:44,method:"tools/call",
+            params:{name:"create_agent_run",arguments:{
+              run_id:$run_id,
+              task:"What is the current Booking sellability?",
+              current_state:true
+            }}
+          }')
+          curl -fsS -X POST "$base/mcp" -H 'content-type: application/json' --data "$payload" > /tmp/brand-source-create.json
           jq -e '.result.structuredContent.nextRole == "source-truth"' /tmp/brand-source-create.json >/dev/null
 
-          curl -fsS -X POST "$base/mcp" \
-            -H 'content-type: application/json' \
-            --data "{"jsonrpc":"2.0","id":45,"method":"tools/call","params":{"name":"execute_agent_role","arguments":{"run_id":"${source_run_id}","role":"source-truth","invocation_id":"smoke-source-guard-v1"}}}" \
-            > /tmp/brand-source-guard.json
-
+          payload=$(jq -nc --arg run_id "$source_run_id" '{
+            jsonrpc:"2.0",id:45,method:"tools/call",
+            params:{name:"execute_agent_role",arguments:{
+              run_id:$run_id,
+              role:"source-truth",
+              invocation_id:"smoke-source-guard-v1"
+            }}
+          }')
+          curl -fsS -X POST "$base/mcp" -H 'content-type: application/json' --data "$payload" > /tmp/brand-source-guard.json
           jq -e '.error.message | contains("SOURCE_EVIDENCE_REQUIRED")' /tmp/brand-source-guard.json >/dev/null
+
           echo 'VIIVERSION Brand Workers AI role execution + Durable Object handoff QA PASS.'
 
       - name: Verify GTM / productization tools
