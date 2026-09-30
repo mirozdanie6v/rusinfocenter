@@ -93,11 +93,11 @@ jobs:
           ready=0
           for attempt in $(seq 1 36); do
             code=$(curl -L -sS --connect-timeout 5 --max-time 20               -o /tmp/brand-init.json -w '%{http_code}'               -X POST "$base/mcp?deploy=${GITHUB_SHA}"               -H 'content-type: application/json'               -H 'accept: application/json, text/event-stream'               --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"ric-shared-deploy","version":"1"}}}' || true)
-            if [ "$code" = "200" ] && jq -e '.result.serverInfo.name == "viiversion-brand-agent" and .result.serverInfo.version == "0.7.2"' /tmp/brand-init.json >/dev/null 2>&1; then
+            if [ "$code" = "200" ] && jq -e '.result.serverInfo.name == "viiversion-brand-agent" and .result.serverInfo.version == "0.8.0"' /tmp/brand-init.json >/dev/null 2>&1; then
               ready=1
               break
             fi
-            echo "Brand Agent v0.7.2 not ready yet (attempt $attempt, HTTP $code)"
+            echo "Brand Agent v0.8.0 not ready yet (attempt $attempt, HTTP $code)"
             sleep 5
           done
           test "$ready" -eq 1
@@ -261,6 +261,35 @@ jobs:
             ([.result.structuredContent.audit[].event] | index("FINAL_RESULT_ASSEMBLED") != null)
           ' /tmp/brand-auto.json >/dev/null || { echo "autonomous response:"; cat /tmp/brand-auto.json; exit 1; }
           echo 'VIIVERSION Brand autonomous E2E PASS.'
+
+      - name: Verify OpenAI public MCP surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://${TARGET_DOMAIN}"
+
+          curl -fsS -X POST "$base/openai/mcp"             -H 'content-type: application/json'             --data '{"jsonrpc":"2.0","id":80,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"openai-review-smoke","version":"1.0"}}}'             > /tmp/openai-init.json
+          jq -e '.result.serverInfo.name == "viiversion-brand-architect" and .result.serverInfo.version == "0.8.0"' /tmp/openai-init.json >/dev/null
+
+          curl -fsS -X POST "$base/openai/mcp"             -H 'content-type: application/json'             --data '{"jsonrpc":"2.0","id":81,"method":"tools/list","params":{}}'             > /tmp/openai-tools.json
+          jq -e '
+            ([.result.tools[].name] | sort) ==
+            (["get_brand_context","get_priority_entities","get_proof","get_required_evidence","plan_productization","run_brand_task","validate_brand_output"] | sort)
+          ' /tmp/openai-tools.json >/dev/null
+
+          jq -e '
+            all(.result.tools[];
+              (.annotations.readOnlyHint | type) == "boolean" and
+              (.annotations.destructiveHint | type) == "boolean" and
+              (.annotations.openWorldHint | type) == "boolean"
+            )
+          ' /tmp/openai-tools.json >/dev/null
+
+          curl -fsS "$base/privacy" | grep -q "Privacy Policy"
+          curl -fsS "$base/terms" | grep -q "Terms of Use"
+          curl -fsS "$base/support" | grep -q "Support"
+
+          echo 'VIIVERSION OpenAI public MCP surface PASS.'
 
       - name: Verify GTM / productization tools
         shell: bash
