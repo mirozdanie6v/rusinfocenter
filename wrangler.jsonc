@@ -1,10 +1,20 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "rusinfocenter",
+  "main": "src/edge-worker.js",
   "compatibility_date": "2026-09-04",
   "workers_dev": false,
   "assets": {
     "directory": "./dist",
-    "not_found_handling": "single-page-application"
-  }
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": true
+  },
+  "routes": [
+    {
+      "pattern": "awg.viiversion.com",
+      "zone_name": "viiversion.com",
+      "custom_domain": true
+    }
+  ]
 }
