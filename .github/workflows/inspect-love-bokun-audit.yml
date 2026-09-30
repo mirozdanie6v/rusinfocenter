@@ -15,7 +15,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          curl -fsS "https://lovetravel.viiversion.com/api/bokun/domain?locale=en&start=2026-09-30&end=2026-10-07&includePickupPlaces=1" > /tmp/domain.json
+          curl -fsS "https://lovetravel.viiversion.com/api/bokun/domain?locale=en&start=2026-09-30&end=2026-10-07&includePickupPlaces=0" > /tmp/domain.json
           jq '{
             domains:[.domains[]|{
               id:.experience.id,
@@ -31,8 +31,14 @@ jobs:
                 videoCount:(.experience.media.videos|length),
                 videos:.experience.media.videos
               },
-              meeting:.experience.meeting,
-              pickup:.experience.pickup,
+              meeting:{type:.experience.meeting.type,startPoints:.experience.meeting.startPoints},
+              pickup:{
+                enabled:.experience.pickup.enabled,
+                placeGroupCount:(.experience.pickup.placeGroups|length),
+                placeCount:(.experience.pickup.places|length),
+                customAllowed:.experience.pickup.customAllowed,
+                noPickupMessage:.experience.pickup.noPickupMessage
+              },
               accessibility:.experience.accessibility,
               rates:[.rates[]|{id,code,title,description}],
               extras:.extras,
