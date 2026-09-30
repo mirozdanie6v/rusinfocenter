@@ -14,6 +14,8 @@ on:
       - '.deploy-brand-agent'
       - '.github/workflows/deploy-brand-agent-shared.yml'
       - '.github/workflows/deploy-cloudflare.yml'
+      - '.deploy-autoworld-awg-proxy'
+      - '.github/workflows/deploy-autoworld-awg-proxy.yml'
   workflow_dispatch:
 
 permissions:
