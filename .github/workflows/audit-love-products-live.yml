@@ -11,30 +11,38 @@ jobs:
   audit:
     runs-on: ubuntu-latest
     steps:
-      - name: Inspect live Bókun product payload
+      - name: Inspect live Bókun product summary
         shell: bash
         run: |
           set -euo pipefail
-          curl -fsS "https://lovetravel.viiversion.com/api/bokun/domain?locale=en&start=2026-09-30&end=2026-10-02&includePickupPlaces=1" > /tmp/domain.json
+          curl -fsS "https://lovetravel.viiversion.com/api/bokun/domain?locale=en&start=2026-09-30&end=2026-10-02" > /tmp/domain.json
           jq '{
             domains:[.domains[]|{
               id:.experience.id,
               title:.experience.title,
               description:.experience.description,
-              duration:.experience.duration,
-              content:.experience.content,
-              itinerary:.experience.itinerary,
-              photos:[.experience.media.photos[]|{url,alt}],
+              duration:.experience.duration.text,
+              included:.experience.content.included,
+              excluded:.experience.content.excluded,
+              attention:.experience.content.attention,
+              knowBeforeYouGoItems:.experience.content.knowBeforeYouGoItems,
+              itinerary:[.experience.itinerary[]|{title,body}],
+              photoCount:(.experience.media.photos|length),
+              photoUrls:[.experience.media.photos[].url],
+              videoCount:(.experience.media.videos|length),
               videos:.experience.media.videos,
-              rates:[.rates[]|{id,title,description}],
-              participants:.participants,
-              extras:.extras,
-              offers:.offers,
-              questions:.bookingRequirements.questions,
-              customFields:.bookingRequirements.customFields,
-              meeting:.experience.meeting,
-              pickup:.experience.pickup,
-              cancellationPolicy:.cancellationPolicy,
-              languages:.experience.languages
+              rates:[.rates[]|{id,title}],
+              participants:[.participants[]|{title,minAge,maxAge}],
+              extrasCount:(.extras|length),
+              offersCount:(.offers|length),
+              questionsCount:(.bookingRequirements.questions|length),
+              customFieldsCount:(.bookingRequirements.customFields|length),
+              pickupEnabled:.experience.pickup.enabled,
+              pickupPlacesCount:(.experience.pickup.places|length),
+              meetingType:.experience.meeting.type,
+              startPoints:[.experience.meeting.startPoints[]|{title,addressLine1,city}],
+              cancellationTitle:.cancellationPolicy.title,
+              contentLanguages:.experience.languages.raw,
+              guidanceLanguages:[.experience.languages.guidanceTypes[].displayLanguages[]]
             }]
           }' /tmp/domain.json
