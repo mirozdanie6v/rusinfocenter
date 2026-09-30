@@ -92,11 +92,11 @@ jobs:
           ready=0
           for attempt in $(seq 1 36); do
             code=$(curl -L -sS --connect-timeout 5 --max-time 20               -o /tmp/brand-init.json -w '%{http_code}'               -X POST "$base/mcp?deploy=${GITHUB_SHA}"               -H 'content-type: application/json'               -H 'accept: application/json, text/event-stream'               --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"ric-shared-deploy","version":"1"}}}' || true)
-            if [ "$code" = "200" ] && jq -e '.result.serverInfo.name == "viiversion-brand-agent" and .result.serverInfo.version == "0.8.2"' /tmp/brand-init.json >/dev/null 2>&1; then
+            if [ "$code" = "200" ] && jq -e '.result.serverInfo.name == "viiversion-brand-agent" and .result.serverInfo.version == "0.8.3"' /tmp/brand-init.json >/dev/null 2>&1; then
               ready=1
               break
             fi
-            echo "Brand Agent v0.8.2 not ready yet (attempt $attempt, HTTP $code)"
+            echo "Brand Agent v0.8.3 not ready yet (attempt $attempt, HTTP $code)"
             sleep 5
           done
           test "$ready" -eq 1
@@ -143,6 +143,17 @@ jobs:
             (.result.structuredContent.route | index("proof-analyst") != null) and
             (.result.structuredContent.route | index("brand-qa") != null)
           ' /tmp/brand-role-plan.json >/dev/null
+          curl -fsS -X POST "$base/mcp" \
+            -H 'content-type: application/json' \
+            --data '{"jsonrpc":"2.0","id":32,"method":"tools/call","params":{"name":"plan_agent_roles","arguments":{"task":"The user rejects the current homepage meaning, structure and copy. Preserve only colors and gradients and rebuild the first three blocks; this is redesign, not audit.","surface":"website","current_state":true}}}' \
+            > /tmp/brand-redesign-role-plan.json
+
+          jq -e '
+            .result.structuredContent.taskMode == "REDESIGN" and
+            (.result.structuredContent.route | index("presentation-synthesis") != null) and
+            ((.result.structuredContent.route | index("presentation-synthesis")) < (.result.structuredContent.route | index("channel-architect")))
+          ' /tmp/brand-redesign-role-plan.json >/dev/null || { echo "redesign role plan:"; cat /tmp/brand-redesign-role-plan.json; exit 1; }
+
           echo 'VIIVERSION Brand specialist role routing QA PASS.'
 
       - name: Verify Workers AI specialist execution and handoff
@@ -269,7 +280,7 @@ jobs:
           base="https://${TARGET_DOMAIN}"
 
           curl -fsS -X POST "$base/openai/mcp"             -H 'content-type: application/json'             --data '{"jsonrpc":"2.0","id":80,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"openai-review-smoke","version":"1.0"}}}'             > /tmp/openai-init.json
-          jq -e '.result.serverInfo.name == "viiversion-brand-architect" and .result.serverInfo.version == "0.8.2"' /tmp/openai-init.json >/dev/null
+          jq -e '.result.serverInfo.name == "viiversion-brand-architect" and .result.serverInfo.version == "0.8.3"' /tmp/openai-init.json >/dev/null
 
           curl -fsS -X POST "$base/openai/mcp"             -H 'content-type: application/json'             --data '{"jsonrpc":"2.0","id":81,"method":"tools/list","params":{}}'             > /tmp/openai-tools.json
           jq -e '
@@ -331,4 +342,15 @@ jobs:
           curl -fsS -X POST "$base/mcp"             -H 'content-type: application/json'             --data '{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"validate_live_context","arguments":{"task":"What are the current Booking sellability and proof records?","current_state":true,"source_classes":["L1_identity","L2_commercial_matrix","proof_registry"],"tabs_read":["Entity_Registry","Products","Offers","Verticals","Assets"]}}}'             > /tmp/brand-live-gate.json
 
           jq -e '.result.structuredContent.pass == true' /tmp/brand-live-gate.json >/dev/null
+          curl -fsS -X POST "$base/mcp" \
+            -H 'content-type: application/json' \
+            --data '{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"get_live_source_plan","arguments":{"task":"Redesign the VIIVERSION homepage from L1-L3; the current meaning and copy are rejected, preserve only visual style.","surface":"website","current_state":true}}}' \
+            > /tmp/brand-redesign-live-plan.json
+
+          jq -e '
+            (.result.structuredContent.requiredSourceClasses | index("L3_market_brand") != null) and
+            ([.result.structuredContent.documents[].key] | index("globalBrand") != null) and
+            .result.structuredContent.liveRequired == true
+          ' /tmp/brand-redesign-live-plan.json >/dev/null || { echo "redesign live plan:"; cat /tmp/brand-redesign-live-plan.json; exit 1; }
+
           echo 'VIIVERSION Brand live Source of Truth QA PASS.'
