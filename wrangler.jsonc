@@ -13,7 +13,6 @@
   "routes": [
     {
       "pattern": "awg.viiversion.com",
-      "zone_name": "viiversion.com",
       "custom_domain": true
     }
   ]
