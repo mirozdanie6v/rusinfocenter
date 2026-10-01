@@ -92,11 +92,11 @@ jobs:
           ready=0
           for attempt in $(seq 1 36); do
             code=$(curl -L -sS --connect-timeout 5 --max-time 20               -o /tmp/brand-init.json -w '%{http_code}'               -X POST "$base/mcp?deploy=${GITHUB_SHA}"               -H 'content-type: application/json'               -H 'accept: application/json, text/event-stream'               --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"ric-shared-deploy","version":"1"}}}' || true)
-            if [ "$code" = "200" ] && jq -e '.result.serverInfo.name == "viiversion-brand-agent" and .result.serverInfo.version == "0.8.3"' /tmp/brand-init.json >/dev/null 2>&1; then
+            if [ "$code" = "200" ] && jq -e '.result.serverInfo.name == "viiversion-brand-agent" and .result.serverInfo.version == "0.8.4"' /tmp/brand-init.json >/dev/null 2>&1; then
               ready=1
               break
             fi
-            echo "Brand Agent v0.8.3 not ready yet (attempt $attempt, HTTP $code)"
+            echo "Brand Agent v0.8.4 not ready yet (attempt $attempt, HTTP $code)"
             sleep 5
           done
           test "$ready" -eq 1
@@ -273,6 +273,52 @@ jobs:
           ' /tmp/brand-auto.json >/dev/null || { echo "autonomous response:"; cat /tmp/brand-auto.json; exit 1; }
           echo 'VIIVERSION Brand autonomous E2E PASS.'
 
+      - name: Verify homepage redesign E2E contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://${TARGET_DOMAIN}"
+          run_id="brand-redesign-${GITHUB_RUN_ID}"
+          evidence='[
+            {"evidenceId":"l1","source":"Corporate Strategy","content":"VIIVERSION is an engineering product company with two equal directions, Engineering Solutions and Software. Do not position as a web studio, generic agency or generic AI agency."},
+            {"evidenceId":"l3","source":"Global Brand Strategy","content":"Buyer-facing projection must be concrete, integration-first, product-oriented and move from a buyer job to system depth without exposing internal taxonomy as the first-screen architecture."},
+            {"evidenceId":"website","source":"Website UX and Homepage","content":"Preserve navy/blue gradient visual language. Rebuild information hierarchy. Hero must be clear. Proof must immediately follow the first promise. Old Hero copy is under re-review and is not an immutable target."},
+            {"evidenceId":"proof","source":"Commercial Matrix Assets","content":"A01 MAX TOUR full-stack demo; A03 UNIQ SMART RENT production-oriented demo; A09 Proposal Studio release-ready agent/plugin; A11 ZL Web Agent working AI agent + MCP."}
+          ]'
+          payload=$(jq -nc --arg run_id "$run_id" --argjson evidence "$evidence" '{
+            jsonrpc:"2.0",id:70,method:"tools/call",
+            params:{name:"run_brand_task",arguments:{
+              run_id:$run_id,
+              task:"Меня не устраивает смысл, структура и тексты главной VIIVERSION. Сохрани только текущие цвета, градиенты и визуальный характер. Это REDESIGN, не аудит. Заново создай первые три блока. Не возвращай старый Hero и не делай Engineering Solutions / Software отдельными вторым и третьим экранами.",
+              surface:"website",
+              current_state:true,
+              final_public:false,
+              max_rework_cycles:2,
+              observed_at:"2026-10-01T00:00:00Z",
+              source_classes:["L1_identity","L3_market_brand","L2_commercial_matrix","proof_registry","website_projection"],
+              tabs_read:["Entity_Registry","Products","Offers","Verticals","Assets","Website_Decisions","Homepage_Blocks","UX_Rules","Website_Mapping"],
+              source_evidence:$evidence
+            }}
+          }')
+          curl -fsS --max-time 300 -X POST "$base/mcp" -H 'content-type: application/json' --data "$payload" > /tmp/brand-redesign.json
+
+          jq -e '
+            .result.structuredContent.status == "COMPLETED" and
+            .result.structuredContent.taskMode == "REDESIGN" and
+            (.result.structuredContent.route | index("presentation-synthesis") != null) and
+            ([.result.structuredContent.acceptedArtifacts[] | select(.type == "presentation-concept") | .payload.first_three_blocks | length] | last) == 3 and
+            ([.result.structuredContent.acceptedArtifacts[] | select(.type == "channel-projection") | .payload.first_three_blocks | length] | last) == 3 and
+            ([.result.structuredContent.acceptedArtifacts[] | select(.type == "channel-projection") | .payload.first_three_blocks[1].proof_refs | length] | last) > 0 and
+            (([.result.structuredContent.acceptedArtifacts[] | select(.type == "channel-projection") | .payload.first_three_blocks[1].heading] | last | ascii_downcase) != "engineering solutions") and
+            (([.result.structuredContent.acceptedArtifacts[] | select(.type == "channel-projection") | .payload.first_three_blocks[2].heading] | last | ascii_downcase) != "software") and
+            (.result.structuredContent.finalResult.answer | contains("Блок 1")) and
+            (.result.structuredContent.finalResult.answer | contains("Блок 2")) and
+            (.result.structuredContent.finalResult.answer | contains("Блок 3")) and
+            ([.result.structuredContent.acceptedArtifacts[] | select(.type == "qa-report") | .payload.decision] | last) == "PASS"
+          ' /tmp/brand-redesign.json >/dev/null || { echo "redesign E2E response:"; cat /tmp/brand-redesign.json; exit 1; }
+
+          echo 'VIIVERSION homepage redesign E2E PASS.'
+
       - name: Verify OpenAI public MCP surface
         shell: bash
         run: |
@@ -280,7 +326,7 @@ jobs:
           base="https://${TARGET_DOMAIN}"
 
           curl -fsS -X POST "$base/openai/mcp"             -H 'content-type: application/json'             --data '{"jsonrpc":"2.0","id":80,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"openai-review-smoke","version":"1.0"}}}'             > /tmp/openai-init.json
-          jq -e '.result.serverInfo.name == "viiversion-brand-architect" and .result.serverInfo.version == "0.8.3"' /tmp/openai-init.json >/dev/null
+          jq -e '.result.serverInfo.name == "viiversion-brand-architect" and .result.serverInfo.version == "0.8.4"' /tmp/openai-init.json >/dev/null
 
           curl -fsS -X POST "$base/openai/mcp"             -H 'content-type: application/json'             --data '{"jsonrpc":"2.0","id":81,"method":"tools/list","params":{}}'             > /tmp/openai-tools.json
           jq -e '
