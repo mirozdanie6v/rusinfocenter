@@ -104,13 +104,27 @@ jobs:
           printf '%s' "$expires_at" | npx wrangler secret put WHATSAPP_BROWSER_SETUP_EXPIRES_AT --config wrangler.shared.jsonc >/dev/null
 
           base="https://integration.viiversion.com/whatsapp/browser/connect"
-          curl -fsS -X POST "$base/start?token=$setup_token" -o /tmp/wa-start.json
-          jq -e '.ok == true' /tmp/wa-start.json >/dev/null
+          ready=0
+          for attempt in $(seq 1 20); do
+            code=$(curl -sS -X POST "$base/start?token=$setup_token" -o /tmp/wa-start.json -w '%{http_code}' || true)
+            if [ "$code" = "200" ] && jq -e '.ok == true' /tmp/wa-start.json >/dev/null 2>&1; then
+              ready=1
+              break
+            fi
+            echo "Waiting for temporary WhatsApp setup secret (attempt $attempt, HTTP $code)"
+            sleep 2
+          done
+          test "$ready" -eq 1
 
-          curl -fsS "$base/live?token=$setup_token" -o /tmp/wa-live.json
+          code=$(curl -sS "$base/live?token=$setup_token" -o /tmp/wa-live.json -w '%{http_code}' || true)
+          if [ "$code" != "200" ]; then
+            cat /tmp/wa-live.json || true
+            exit 1
+          fi
           jq -e '.ok == true and (.liveViewUrl | type == "string") and (.liveViewUrl | startswith("https://"))' /tmp/wa-live.json >/dev/null
 
-          curl -fsS -X POST "$base/reset?token=$setup_token" -o /tmp/wa-reset.json
+          code=$(curl -sS -X POST "$base/reset?token=$setup_token" -o /tmp/wa-reset.json -w '%{http_code}' || true)
+          test "$code" = "200"
           jq -e '.ok == true and .reset == true' /tmp/wa-reset.json >/dev/null
           echo 'WhatsApp Browser Live View pairing smoke passed.'
 
