@@ -170,7 +170,7 @@ jobs:
             (.result.structuredContent.route | index("commercial-architect") != null) and
             (.result.structuredContent.route | index("commercial-economics") != null) and
             (.result.structuredContent.route | index("brand-qa") != null)
-          ' /tmp/core-economics-route.json >/dev/null
+          ' /tmp/core-economics-route.json >/dev/null || { echo "economics route:"; cat /tmp/core-economics-route.json; exit 1; }
 
           curl -fsS -X POST "$base/mcp" -H 'content-type: application/json' \
             --data '{"jsonrpc":"2.0","id":34,"method":"tools/call","params":{"name":"plan_agent_roles","arguments":{"task":"One client requested Bókun integration. What does this sales event actually teach us?"}}}' \
@@ -179,7 +179,7 @@ jobs:
             (.result.structuredContent.route | index("source-truth") != null) and
             (.result.structuredContent.route | index("revenue-intelligence") != null) and
             (.result.structuredContent.route | index("brand-qa") != null)
-          ' /tmp/core-revenue-route.json >/dev/null
+          ' /tmp/core-revenue-route.json >/dev/null || { echo "revenue route:"; cat /tmp/core-revenue-route.json; exit 1; }
 
           curl -fsS -X POST "$base/mcp" -H 'content-type: application/json' \
             --data '{"jsonrpc":"2.0","id":35,"method":"tools/call","params":{"name":"plan_agent_roles","arguments":{"task":"Several clients independently request the same integration. Decide whether to productize it and how it fits the VIIVERSION portfolio."}}}' \
@@ -190,7 +190,7 @@ jobs:
             (.result.structuredContent.route | index("portfolio-intelligence") != null) and
             ((.result.structuredContent.route | index("commercial-economics")) < (.result.structuredContent.route | index("portfolio-intelligence"))) and
             ((.result.structuredContent.route | index("revenue-intelligence")) < (.result.structuredContent.route | index("portfolio-intelligence")))
-          ' /tmp/core-portfolio-route.json >/dev/null
+          ' /tmp/core-portfolio-route.json >/dev/null || { echo "portfolio route:"; cat /tmp/core-portfolio-route.json; exit 1; }
 
           curl -fsS -X POST "$base/mcp" -H 'content-type: application/json' \
             --data '{"jsonrpc":"2.0","id":36,"method":"tools/call","params":{"name":"get_live_source_plan","arguments":{"task":"Review the VIIVERSION portfolio using real sales learning and economics."}}}' \
@@ -202,7 +202,7 @@ jobs:
             (.result.structuredContent.requiredSourceClasses | index("revenue_learning_state") != null) and
             (.result.structuredContent.requiredSourceClasses | index("commercial_economics_state") != null) and
             (.result.structuredContent.requiredSourceClasses | index("portfolio_intelligence_state") != null)
-          ' /tmp/core-source-plan.json >/dev/null
+          ' /tmp/core-source-plan.json >/dev/null || { echo "core source plan:"; cat /tmp/core-source-plan.json; exit 1; }
 
           echo 'VIIVERSION Core routing and live-evidence planning PASS.'
 
