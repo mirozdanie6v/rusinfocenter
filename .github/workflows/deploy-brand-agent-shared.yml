@@ -92,11 +92,11 @@ jobs:
           ready=0
           for attempt in $(seq 1 36); do
             code=$(curl -L -sS --connect-timeout 5 --max-time 20               -o /tmp/brand-init.json -w '%{http_code}'               -X POST "$base/mcp?deploy=${GITHUB_SHA}"               -H 'content-type: application/json'               -H 'accept: application/json, text/event-stream'               --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"ric-shared-deploy","version":"1"}}}' || true)
-            if [ "$code" = "200" ] && jq -e '.result.serverInfo.name == "viiversion-brand-agent" and .result.serverInfo.version == "0.8.4"' /tmp/brand-init.json >/dev/null 2>&1; then
+            if [ "$code" = "200" ] && jq -e '.result.serverInfo.name == "viiversion-brand-agent" and .result.serverInfo.version == "0.9.0"' /tmp/brand-init.json >/dev/null 2>&1; then
               ready=1
               break
             fi
-            echo "Brand Agent v0.8.4 not ready yet (attempt $attempt, HTTP $code)"
+            echo "Brand Agent v0.9.0 not ready yet (attempt $attempt, HTTP $code)"
             sleep 5
           done
           test "$ready" -eq 1
@@ -155,6 +155,56 @@ jobs:
           ' /tmp/brand-redesign-role-plan.json >/dev/null || { echo "redesign role plan:"; cat /tmp/brand-redesign-role-plan.json; exit 1; }
 
           echo 'VIIVERSION Brand specialist role routing QA PASS.'
+
+      - name: Verify VIIVERSION Core role routing
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://${TARGET_DOMAIN}"
+
+          curl -fsS -X POST "$base/mcp" -H 'content-type: application/json' \
+            --data '{"jsonrpc":"2.0","id":33,"method":"tools/call","params":{"name":"plan_agent_roles","arguments":{"task":"Which VIIVERSION offer is actually more profitable and scalable? Do not invent missing costs."}}}' \
+            > /tmp/core-economics-route.json
+          jq -e '
+            (.result.structuredContent.route | index("source-truth") != null) and
+            (.result.structuredContent.route | index("commercial-architect") != null) and
+            (.result.structuredContent.route | index("commercial-economics") != null) and
+            (.result.structuredContent.route | index("brand-qa") != null)
+          ' /tmp/core-economics-route.json >/dev/null
+
+          curl -fsS -X POST "$base/mcp" -H 'content-type: application/json' \
+            --data '{"jsonrpc":"2.0","id":34,"method":"tools/call","params":{"name":"plan_agent_roles","arguments":{"task":"One client requested Bókun integration. What does this sales event actually teach us?"}}}' \
+            > /tmp/core-revenue-route.json
+          jq -e '
+            (.result.structuredContent.route | index("source-truth") != null) and
+            (.result.structuredContent.route | index("revenue-intelligence") != null) and
+            (.result.structuredContent.route | index("brand-qa") != null)
+          ' /tmp/core-revenue-route.json >/dev/null
+
+          curl -fsS -X POST "$base/mcp" -H 'content-type: application/json' \
+            --data '{"jsonrpc":"2.0","id":35,"method":"tools/call","params":{"name":"plan_agent_roles","arguments":{"task":"Several clients independently request the same integration. Decide whether to productize it and how it fits the VIIVERSION portfolio."}}}' \
+            > /tmp/core-portfolio-route.json
+          jq -e '
+            (.result.structuredContent.route | index("commercial-economics") != null) and
+            (.result.structuredContent.route | index("revenue-intelligence") != null) and
+            (.result.structuredContent.route | index("portfolio-intelligence") != null) and
+            ((.result.structuredContent.route | index("commercial-economics")) < (.result.structuredContent.route | index("portfolio-intelligence"))) and
+            ((.result.structuredContent.route | index("revenue-intelligence")) < (.result.structuredContent.route | index("portfolio-intelligence")))
+          ' /tmp/core-portfolio-route.json >/dev/null
+
+          curl -fsS -X POST "$base/mcp" -H 'content-type: application/json' \
+            --data '{"jsonrpc":"2.0","id":36,"method":"tools/call","params":{"name":"get_live_source_plan","arguments":{"task":"Review the VIIVERSION portfolio using real sales learning and economics."}}}' \
+            > /tmp/core-source-plan.json
+          jq -e '
+            (.result.structuredContent.commercialMatrix.tabs | index("Revenue_Intelligence") != null) and
+            (.result.structuredContent.commercialMatrix.tabs | index("Commercial_Economics") != null) and
+            (.result.structuredContent.commercialMatrix.tabs | index("Portfolio_Intelligence") != null) and
+            (.result.structuredContent.requiredSourceClasses | index("revenue_learning_state") != null) and
+            (.result.structuredContent.requiredSourceClasses | index("commercial_economics_state") != null) and
+            (.result.structuredContent.requiredSourceClasses | index("portfolio_intelligence_state") != null)
+          ' /tmp/core-source-plan.json >/dev/null
+
+          echo 'VIIVERSION Core routing and live-evidence planning PASS.'
 
       - name: Verify Workers AI specialist execution and handoff
         shell: bash
@@ -268,10 +318,43 @@ jobs:
             .result.structuredContent.status == "COMPLETED" and
             (.result.structuredContent.route | length) == 8 and
             ([.result.structuredContent.acceptedArtifacts[] | select(.type == "qa-report") | .payload.decision] | last) == "PASS" and
+            ([.result.structuredContent.acceptedArtifacts[] | select(.type == "qa-report") | .payload.gate_results | length] | last) == 18 and
             (.result.structuredContent.finalResult.answer | length) > 20 and
             ([.result.structuredContent.audit[].event] | index("FINAL_RESULT_ASSEMBLED") != null)
           ' /tmp/brand-auto.json >/dev/null || { echo "autonomous response:"; cat /tmp/brand-auto.json; exit 1; }
           echo 'VIIVERSION Brand autonomous E2E PASS.'
+
+      - name: Verify commercial economics E2E contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://${TARGET_DOMAIN}"
+          run_id="brand-economics-${GITHUB_RUN_ID}"
+          evidence='[
+            {"evidenceId":"economics-live","source":"Commercial Matrix Products + Commercial_Economics","content":"P28 is an existing Software product. Recorded price signal: 1000 USD for the scoped offer. Delivery cost is UNKNOWN. Support cost is UNKNOWN. CAC is UNKNOWN. LTV is UNKNOWN. No gross margin has been measured. Repeatability requires measurement."}
+          ]'
+          payload=$(jq -nc --arg run_id "$run_id" --argjson evidence "$evidence" '{
+            jsonrpc:"2.0",id:68,method:"tools/call",
+            params:{name:"run_brand_task",arguments:{
+              run_id:$run_id,
+              task:"Assess whether P28 is profitable and scalable. Do not invent any missing economics.",
+              surface:"commercial-economics",
+              max_rework_cycles:2,
+              observed_at:"2026-10-01T12:00:00Z",
+              source_classes:["L1_identity","L2_commercial_matrix","commercial_economics_state"],
+              tabs_read:["Entity_Registry","Products","Offers","Verticals","Commercial_Economics"],
+              source_evidence:$evidence
+            }}
+          }')
+          curl -fsS --max-time 300 -X POST "$base/mcp" -H 'content-type: application/json' --data "$payload" > /tmp/brand-economics.json
+          jq -e '
+            .result.structuredContent.status == "COMPLETED" and
+            (.result.structuredContent.route | index("commercial-economics") != null) and
+            ([.result.structuredContent.acceptedArtifacts[] | select(.type == "economics-decision") | .payload.unknown_metrics | length] | last) > 0 and
+            ([.result.structuredContent.acceptedArtifacts[] | select(.type == "qa-report") | .payload.gate_results | length] | last) == 18 and
+            ([.result.structuredContent.acceptedArtifacts[] | select(.type == "qa-report") | .payload.decision] | last) == "PASS"
+          ' /tmp/brand-economics.json >/dev/null || { echo "economics E2E response:"; cat /tmp/brand-economics.json; exit 1; }
+          echo 'VIIVERSION Commercial Economics E2E PASS.'
 
       - name: Verify homepage redesign E2E contract
         shell: bash
@@ -314,7 +397,8 @@ jobs:
             (.result.structuredContent.finalResult.answer | contains("Блок 1")) and
             (.result.structuredContent.finalResult.answer | contains("Блок 2")) and
             (.result.structuredContent.finalResult.answer | contains("Блок 3")) and
-            ([.result.structuredContent.acceptedArtifacts[] | select(.type == "qa-report") | .payload.decision] | last) == "PASS"
+            ([.result.structuredContent.acceptedArtifacts[] | select(.type == "qa-report") | .payload.decision] | last) == "PASS" and
+            ([.result.structuredContent.acceptedArtifacts[] | select(.type == "qa-report") | .payload.gate_results | length] | last) == 18
           ' /tmp/brand-redesign.json >/dev/null || { echo "redesign E2E response:"; cat /tmp/brand-redesign.json; exit 1; }
 
           echo 'VIIVERSION homepage redesign E2E PASS.'
@@ -326,7 +410,7 @@ jobs:
           base="https://${TARGET_DOMAIN}"
 
           curl -fsS -X POST "$base/openai/mcp"             -H 'content-type: application/json'             --data '{"jsonrpc":"2.0","id":80,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"openai-review-smoke","version":"1.0"}}}'             > /tmp/openai-init.json
-          jq -e '.result.serverInfo.name == "viiversion-brand-architect" and .result.serverInfo.version == "0.8.4"' /tmp/openai-init.json >/dev/null
+          jq -e '.result.serverInfo.name == "viiversion-brand-architect" and .result.serverInfo.version == "0.9.0"' /tmp/openai-init.json >/dev/null
 
           curl -fsS -X POST "$base/openai/mcp"             -H 'content-type: application/json'             --data '{"jsonrpc":"2.0","id":81,"method":"tools/list","params":{}}'             > /tmp/openai-tools.json
           jq -e '
