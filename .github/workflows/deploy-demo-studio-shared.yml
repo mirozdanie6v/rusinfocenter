@@ -136,8 +136,7 @@ jobs:
           jq -e             '([.result.tools[].name] | sort) == (["create_demo_video","create_demo_video_from_scenario","get_demo_job","inspect_web_app"] | sort)'             /tmp/demo-mcp-tools.json >/dev/null
           echo "Demo Studio MCP production surface verified."
 
-      - name: Verify production generation
-        if: env.OPENAI_API_KEY != ''
+      - name: Verify plugin-native production generation
         shell: bash
         run: |
           set -euo pipefail
@@ -147,11 +146,19 @@ jobs:
             auth=(-H "Authorization: Bearer ${DEMO_STUDIO_API_KEY}")
           fi
 
-          response=$(curl -fsS -X POST "${base}/v1/jobs"             "${auth[@]}"             -H 'content-type: application/json'             --data '{"url":"https://example.com","goal":"Create a short presentation that opens the page and shows its main heading without clicking or submitting anything.","preset":"16:9","captions":true,"voiceover":false,"brand":"VIIVERSION","cta":"Demo Studio production check"}')
-          job_id=$(echo "${response}" | jq -r '.job.id')
+          payload='{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"create_demo_video_from_scenario","arguments":{"url":"https://example.com","preset":"16:9","captions":true,"voiceover":false,"brand":"VIIVERSION","scenario":{"name":"Production check","baseUrl":"https://example.com","steps":[{"action":"goto","url":"/","label":"Open target","narration":"Open the target application."},{"action":"wait","ms":700}]}}}}'
+
+          curl -fsS -X POST "${base}/mcp"             "${auth[@]}"             -H 'content-type: application/json'             -H 'accept: application/json, text/event-stream'             --data "${payload}" > /tmp/demo-create.raw
+
+          if jq -e . /tmp/demo-create.raw >/dev/null 2>&1; then
+            cp /tmp/demo-create.raw /tmp/demo-create.json
+          else
+            sed -n 's/^data: //p' /tmp/demo-create.raw | tail -n 1 > /tmp/demo-create.json
+          fi
+
+          job_id=$(jq -r '.result.content[0].text | fromjson | .job_id' /tmp/demo-create.json)
           test -n "${job_id}"
           test "${job_id}" != "null"
-          echo "Production generation job accepted: ${job_id}"
 
           completed=0
           for attempt in $(seq 1 60); do
@@ -170,8 +177,8 @@ jobs:
           done
           test "${completed}" -eq 1
 
-          artifact_code=$(curl -sS -o /tmp/demo-production.mp4 -w '%{http_code}'             "${base}/v1/jobs/${job_id}/artifact" "${auth[@]}")
-          test "${artifact_code}" = "200"
+          code=$(curl -sS -o /tmp/demo-production.mp4 -w '%{http_code}'             "${base}/v1/jobs/${job_id}/artifact" "${auth[@]}")
+          test "${code}" = "200"
           test "$(stat -c%s /tmp/demo-production.mp4)" -gt 10000
           file /tmp/demo-production.mp4
-          echo "Demo Studio production generation verified."
+          echo "Plugin-native production generation verified."
