@@ -1,0 +1,41 @@
+name: Check Demo Studio Public
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/check-demo-studio-public.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Inspect public root
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://demostudio.viiversion.com"
+          code=$(curl -L -sS --connect-timeout 8 --max-time 40             -D /tmp/root.headers             -o /tmp/root.body             -w '%{http_code}'             "${base}/")
+          echo "HTTP=${code}"
+          echo "--- headers ---"
+          cat /tmp/root.headers
+          echo "--- body preview ---"
+          head -c 1200 /tmp/root.body
+          echo
+          echo "--- checks ---"
+          test "${code}" = "200"
+          grep -Fq 'VIIVERSION Demo Studio' /tmp/root.body
+          grep -Fq 'Turn a web app into a presentation video.' /tmp/root.body
+          echo "Public root is valid."
+
+      - name: Inspect health
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS https://demostudio.viiversion.com/health | jq .
