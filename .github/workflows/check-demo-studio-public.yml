@@ -31,7 +31,7 @@ jobs:
           echo "--- checks ---"
           test "${code}" = "200"
           grep -Fq 'VIIVERSION Demo Studio' /tmp/root.body
-          grep -Fq 'Turn a web app into a presentation video.' /tmp/root.body
+          grep -Fq 'Turn web apps into polished demo videos.' /tmp/root.body
           echo "Public root is valid."
 
       - name: Inspect health

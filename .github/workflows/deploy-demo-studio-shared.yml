@@ -7,7 +7,6 @@ on:
       - main
     paths:
       - '.deploy-demo-studio'
-      - '.github/workflows/deploy-demo-studio-shared.yml'
 
 permissions:
   contents: read
@@ -136,7 +135,7 @@ jobs:
           code=$(curl -L -sS --connect-timeout 8 --max-time 40             -o /tmp/demo-root.html -w '%{http_code}' "${base}/")
           test "${code}" = "200"
           grep -Fq 'VIIVERSION Demo Studio' /tmp/demo-root.html
-          grep -Fq 'Turn a web app into a presentation video.' /tmp/demo-root.html
+          grep -Fq 'Turn web apps into polished demo videos.' /tmp/demo-root.html
           echo "Demo Studio public landing page verified."
 
       - name: Verify MCP initialize and tools
