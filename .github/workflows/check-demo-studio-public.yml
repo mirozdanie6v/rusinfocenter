@@ -21,7 +21,7 @@ jobs:
         run: |
           set -euo pipefail
           base="https://demostudio.viiversion.com"
-          code=$(curl -L -sS --connect-timeout 8 --max-time 40             -D /tmp/root.headers             -o /tmp/root.body             -w '%{http_code}'             "${base}/")
+          code=$(curl -L -sS --connect-timeout 8 --max-time 40             -D /tmp/root.headers             -o /tmp/root.body             -w '%{http_code}'             "${base}/?check=${GITHUB_SHA}")
           echo "HTTP=${code}"
           echo "--- headers ---"
           cat /tmp/root.headers
