@@ -96,7 +96,7 @@ jobs:
           ready=0
           for attempt in $(seq 1 60); do
             code=$(curl -L -sS --connect-timeout 8 --max-time 40               -o /tmp/demo-health.json -w '%{http_code}'               "${base}/health?deploy=${GITHUB_SHA}" || true)
-            if [ "${code}" = "200" ] && jq -e               '.ok == true and .service == "viiversion-demo-studio" and .version == "0.7.0" or .version == "0.8.0"'               /tmp/demo-health.json >/dev/null 2>&1; then
+            if [ "${code}" = "200" ] && jq -e               '(.ok == true) and (.service == "viiversion-demo-studio") and (.version == "0.8.0")'               /tmp/demo-health.json >/dev/null 2>&1; then
               ready=1
               break
             fi
