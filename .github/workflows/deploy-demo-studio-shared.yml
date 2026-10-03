@@ -118,7 +118,7 @@ jobs:
           ready=0
           for attempt in $(seq 1 60); do
             code=$(curl -L -sS --connect-timeout 8 --max-time 40               -o /tmp/demo-health.json -w '%{http_code}'               "${base}/health?deploy=${GITHUB_SHA}" || true)
-            if [ "${code}" = "200" ] && jq -e               '(.ok == true) and (.service == "viiversion-demo-studio") and (.version == "0.10.0")'               /tmp/demo-health.json >/dev/null 2>&1; then
+            if [ "${code}" = "200" ] && jq -e               '(.ok == true) and (.service == "viiversion-demo-studio") and (.version == "0.10.1")'               /tmp/demo-health.json >/dev/null 2>&1; then
               ready=1
               break
             fi
@@ -127,6 +127,17 @@ jobs:
           done
           test "${ready}" -eq 1
           jq '{ok,service,version}' /tmp/demo-health.json
+
+      - name: Verify public landing page
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://${TARGET_DOMAIN}"
+          code=$(curl -L -sS --connect-timeout 8 --max-time 40             -o /tmp/demo-root.html -w '%{http_code}' "${base}/")
+          test "${code}" = "200"
+          grep -Fq 'VIIVERSION Demo Studio' /tmp/demo-root.html
+          grep -Fq 'Turn a web app into a presentation video.' /tmp/demo-root.html
+          echo "Demo Studio public landing page verified."
 
       - name: Verify MCP initialize and tools
         shell: bash
