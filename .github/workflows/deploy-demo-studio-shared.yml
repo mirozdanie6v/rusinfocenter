@@ -96,7 +96,7 @@ jobs:
           ready=0
           for attempt in $(seq 1 60); do
             code=$(curl -L -sS --connect-timeout 8 --max-time 40               -o /tmp/demo-health.json -w '%{http_code}'               "${base}/health?deploy=${GITHUB_SHA}" || true)
-            if [ "${code}" = "200" ] && jq -e               '(.ok == true) and (.service == "viiversion-demo-studio") and (.version == "0.8.0")'               /tmp/demo-health.json >/dev/null 2>&1; then
+            if [ "${code}" = "200" ] && jq -e               '(.ok == true) and (.service == "viiversion-demo-studio") and (.version == "0.9.0")'               /tmp/demo-health.json >/dev/null 2>&1; then
               ready=1
               break
             fi
@@ -133,7 +133,7 @@ jobs:
 
           curl -fsS -X POST "${base}/mcp"             "${auth[@]}"             -H 'content-type: application/json'             -H 'accept: application/json, text/event-stream'             --data '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'             > /tmp/demo-mcp-tools.raw
           normalize_mcp_response /tmp/demo-mcp-tools.raw /tmp/demo-mcp-tools.json
-          jq -e             '([.result.tools[].name] | sort) == (["create_demo_video","get_demo_job"] | sort)'             /tmp/demo-mcp-tools.json >/dev/null
+          jq -e             '([.result.tools[].name] | sort) == (["create_demo_video","create_demo_video_from_scenario","get_demo_job","inspect_web_app"] | sort)'             /tmp/demo-mcp-tools.json >/dev/null
           echo "Demo Studio MCP production surface verified."
 
       - name: Verify production generation
