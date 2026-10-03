@@ -116,10 +116,23 @@ jobs:
             auth=(-H "Authorization: Bearer ${DEMO_STUDIO_API_KEY}")
           fi
 
-          curl -fsS -X POST "${base}/mcp"             "${auth[@]}"             -H 'content-type: application/json'             -H 'accept: application/json, text/event-stream'             --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"ric-demo-studio-deploy","version":"1"}}}'             > /tmp/demo-mcp-init.json
+          normalize_mcp_response() {
+            source_file="$1"
+            target_file="$2"
+            if jq -e . "${source_file}" >/dev/null 2>&1; then
+              cp "${source_file}" "${target_file}"
+              return
+            fi
+            sed -n 's/^data: //p' "${source_file}" | tail -n 1 > "${target_file}"
+            jq -e . "${target_file}" >/dev/null
+          }
+
+          curl -fsS -X POST "${base}/mcp"             "${auth[@]}"             -H 'content-type: application/json'             -H 'accept: application/json, text/event-stream'             --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"ric-demo-studio-deploy","version":"1"}}}'             > /tmp/demo-mcp-init.raw
+          normalize_mcp_response /tmp/demo-mcp-init.raw /tmp/demo-mcp-init.json
           jq -e '.result.serverInfo.name == "viiversion-demo-studio"' /tmp/demo-mcp-init.json >/dev/null
 
-          curl -fsS -X POST "${base}/mcp"             "${auth[@]}"             -H 'content-type: application/json'             -H 'accept: application/json, text/event-stream'             --data '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'             > /tmp/demo-mcp-tools.json
+          curl -fsS -X POST "${base}/mcp"             "${auth[@]}"             -H 'content-type: application/json'             -H 'accept: application/json, text/event-stream'             --data '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'             > /tmp/demo-mcp-tools.raw
+          normalize_mcp_response /tmp/demo-mcp-tools.raw /tmp/demo-mcp-tools.json
           jq -e             '([.result.tools[].name] | sort) == (["create_demo_video","get_demo_job"] | sort)'             /tmp/demo-mcp-tools.json >/dev/null
           echo "Demo Studio MCP production surface verified."
 
