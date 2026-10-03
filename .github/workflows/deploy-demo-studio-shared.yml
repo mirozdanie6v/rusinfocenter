@@ -28,11 +28,34 @@ jobs:
       WORKER_NAME: viiversion-demo-studio
 
     steps:
-      - name: Checkout Demo Studio
+      - name: Checkout RIC release metadata
+        uses: actions/checkout@v5
+        with:
+          path: ric-release
+
+      - name: Resolve pinned release
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          marker="ric-release/.deploy-demo-studio"
+          version=$(awk -F= '/^release=/{print $2}' "${marker}")
+          source=$(awk -F= '/^source=/{print $2}' "${marker}")
+          domain=$(head -n 1 "${marker}")
+
+          test "${domain}" = "${TARGET_DOMAIN}"
+          [[ "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "${source}" =~ ^[0-9a-f]{40}$ ]]
+
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "source=${source}" >> "${GITHUB_OUTPUT}"
+          echo "Pinned Demo Studio release: ${version} @ ${source}"
+
+      - name: Checkout pinned Demo Studio source
         uses: actions/checkout@v5
         with:
           repository: mirozdanie6v/VIIVERSION_Demo_Studio
-          ref: main
+          ref: ${{ steps.release.outputs.source }}
           path: demo-studio
 
       - name: Setup Node.js
@@ -55,18 +78,26 @@ jobs:
           if [ -n "${DEMO_STUDIO_API_KEY:-}" ]; then
             echo "Demo Studio API key: available"
           else
-            echo "Demo Studio API key: missing; initial deployment will use the global 10-jobs/day unauthenticated safety limit"
+            echo "Demo Studio API key: missing; anonymous safety quotas remain enabled"
           fi
 
-      - name: Install and validate Demo Studio
+      - name: Install and validate pinned Demo Studio
         working-directory: demo-studio
         shell: bash
         run: |
           set -euo pipefail
+          expected_version="${{ steps.release.outputs.version }}"
+          expected_source="${{ steps.release.outputs.source }}"
+
+          test "$(node -p "require('./package.json').version")" = "${expected_version}"
+          test "$(git rev-parse HEAD)" = "${expected_source}"
+
           npm install --no-fund --no-audit
           npm run typecheck
           npm test
           docker version
+
+          echo "Validated exact Demo Studio source ${expected_source} at version ${expected_version}."
 
       - name: Ensure private R2 artifact storage
         working-directory: demo-studio
@@ -114,16 +145,21 @@ jobs:
         run: |
           set -euo pipefail
           base="https://${TARGET_DOMAIN}"
+          expected_version="${{ steps.release.outputs.version }}"
           ready=0
+
           for attempt in $(seq 1 60); do
             code=$(curl -L -sS --connect-timeout 8 --max-time 40               -o /tmp/demo-health.json -w '%{http_code}'               "${base}/health?deploy=${GITHUB_SHA}" || true)
-            if [ "${code}" = "200" ] && jq -e               '(.ok == true) and (.service == "viiversion-demo-studio") and (.version == "0.10.1")'               /tmp/demo-health.json >/dev/null 2>&1; then
+
+            if [ "${code}" = "200" ] && jq -e --arg version "${expected_version}"               '(.ok == true) and (.service == "viiversion-demo-studio") and (.version == $version)'               /tmp/demo-health.json >/dev/null 2>&1; then
               ready=1
               break
             fi
+
             echo "Demo Studio container not ready yet (attempt ${attempt}, HTTP ${code})"
             sleep 10
           done
+
           test "${ready}" -eq 1
           jq '{ok,service,version}' /tmp/demo-health.json
 
@@ -132,7 +168,8 @@ jobs:
         run: |
           set -euo pipefail
           base="https://${TARGET_DOMAIN}"
-          code=$(curl -L -sS --connect-timeout 8 --max-time 40             -o /tmp/demo-root.html -w '%{http_code}' "${base}/")
+          code=$(curl -L -sS --connect-timeout 8 --max-time 40             -o /tmp/demo-root.html -w '%{http_code}'             "${base}/?release=${{ steps.release.outputs.version }}")
+
           test "${code}" = "200"
           grep -Fq 'VIIVERSION Demo Studio' /tmp/demo-root.html
           grep -Fq 'Turn web apps into polished demo videos.' /tmp/demo-root.html
@@ -165,8 +202,39 @@ jobs:
 
           curl -fsS -X POST "${base}/mcp"             "${auth[@]}"             -H 'content-type: application/json'             -H 'accept: application/json, text/event-stream'             --data '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'             > /tmp/demo-mcp-tools.raw
           normalize_mcp_response /tmp/demo-mcp-tools.raw /tmp/demo-mcp-tools.json
-          jq -e             '([.result.tools[].name] | sort) == (["create_demo_video","create_demo_video_from_scenario","get_demo_job","inspect_web_app"] | sort)'             /tmp/demo-mcp-tools.json >/dev/null
-          echo "Demo Studio MCP production surface verified."
+
+          jq -e             '([.result.tools[].name] | sort) == (["audit_web_app_design","create_demo_video","create_demo_video_from_scenario","get_demo_job","inspect_web_app"] | sort)'             /tmp/demo-mcp-tools.json >/dev/null
+
+          echo "Demo Studio MCP v0.12 production surface verified."
+
+      - name: Verify UX Design Brain MCP
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://${TARGET_DOMAIN}"
+          auth=()
+          if [ -n "${DEMO_STUDIO_API_KEY:-}" ]; then
+            auth=(-H "Authorization: Bearer ${DEMO_STUDIO_API_KEY}")
+          fi
+
+          curl -fsS -X POST "${base}/mcp"             "${auth[@]}"             -H 'content-type: application/json'             -H 'accept: application/json, text/event-stream'             --data '{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"audit_web_app_design","arguments":{"url":"https://example.com"}}}'             > /tmp/demo-design-audit.raw
+
+          if jq -e . /tmp/demo-design-audit.raw >/dev/null 2>&1; then
+            cp /tmp/demo-design-audit.raw /tmp/demo-design-audit.json
+          else
+            sed -n 's/^data: //p' /tmp/demo-design-audit.raw | tail -n 1 > /tmp/demo-design-audit.json
+          fi
+
+          jq -e '
+            ((.result.isError // false) == false) and
+            ((.result.content[0].text | fromjson) as $audit |
+              ($audit.preflight.version == "ux-preflight-v1") and
+              (($audit.preflight.status == "PASS") or ($audit.preflight.status == "REVISE")) and
+              ($audit.profile.version == "design-profile-v1") and
+              ($audit.contract.version == "design-contract-v1"))
+          ' /tmp/demo-design-audit.json >/dev/null
+
+          echo "Demo Studio UX Design Brain production tool verified."
 
       - name: Verify plugin-native production generation
         shell: bash
@@ -197,16 +265,20 @@ jobs:
             status_json=$(curl -fsS "${base}/v1/jobs/${job_id}" "${auth[@]}")
             status=$(echo "${status_json}" | jq -r '.status')
             echo "Generation status: ${status}"
+
             if [ "${status}" = "completed" ]; then
               completed=1
               break
             fi
+
             if [ "${status}" = "failed" ]; then
               echo "${status_json}" | jq .
               exit 1
             fi
+
             sleep 10
           done
+
           test "${completed}" -eq 1
 
           persisted_status=$(curl -fsS "${base}/v1/jobs/${job_id}" "${auth[@]}")
@@ -219,7 +291,15 @@ jobs:
           ' >/dev/null
 
           code=$(curl -sS -o /tmp/demo-production.mp4 -w '%{http_code}'             "${base}/v1/jobs/${job_id}/artifact" "${auth[@]}")
+
           test "${code}" = "200"
           test "$(stat -c%s /tmp/demo-production.mp4)" -gt 10000
           file /tmp/demo-production.mp4
           echo "Durable R2 status and artifact verified."
+
+      - name: Record released source
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Released Demo Studio ${{ steps.release.outputs.version }}"
+          echo "Source SHA: ${{ steps.release.outputs.source }}"
