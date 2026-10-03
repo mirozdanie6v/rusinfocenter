@@ -1,0 +1,164 @@
+name: Deploy VIIVERSION Demo Studio via RIC
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '.deploy-demo-studio'
+      - '.github/workflows/deploy-demo-studio-shared.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: viiversion-demo-studio-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      DEMO_STUDIO_API_KEY: ${{ secrets.DEMO_STUDIO_API_KEY }}
+      TARGET_DOMAIN: demostudio.viiversion.com
+      WORKER_NAME: viiversion-demo-studio
+
+    steps:
+      - name: Checkout Demo Studio
+        uses: actions/checkout@v5
+        with:
+          repository: mirozdanie6v/VIIVERSION_Demo_Studio
+          ref: main
+          path: demo-studio
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Verify shared RIC credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
+          echo "RIC Cloudflare credentials: available"
+          if [ -n "${OPENAI_API_KEY:-}" ]; then
+            echo "RIC OpenAI key: available"
+          else
+            echo "RIC OpenAI key: missing"
+          fi
+          if [ -n "${DEMO_STUDIO_API_KEY:-}" ]; then
+            echo "Demo Studio API key: available"
+          else
+            echo "Demo Studio API key: missing; initial deployment will use the global 10-jobs/day unauthenticated safety limit"
+          fi
+
+      - name: Install and validate Demo Studio
+        working-directory: demo-studio
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --no-fund --no-audit
+          npm run typecheck
+          npm test
+          docker version
+
+      - name: Deploy Worker and Container image
+        working-directory: demo-studio
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler deploy --config wrangler.jsonc
+
+      - name: Sync runtime secrets
+        working-directory: demo-studio
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${OPENAI_API_KEY:-}" ]; then
+            printf '%s' "${OPENAI_API_KEY}" | npx wrangler secret put OPENAI_API_KEY --config wrangler.jsonc
+          fi
+          if [ -n "${DEMO_STUDIO_API_KEY:-}" ]; then
+            printf '%s' "${DEMO_STUDIO_API_KEY}" | npx wrangler secret put DEMO_STUDIO_API_KEY --config wrangler.jsonc
+          fi
+
+      - name: Verify production health
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://${TARGET_DOMAIN}"
+          ready=0
+          for attempt in $(seq 1 60); do
+            code=$(curl -L -sS --connect-timeout 8 --max-time 40               -o /tmp/demo-health.json -w '%{http_code}'               "${base}/health?deploy=${GITHUB_SHA}" || true)
+            if [ "${code}" = "200" ] && jq -e               '.ok == true and .service == "viiversion-demo-studio" and .version == "0.7.0" or .version == "0.8.0"'               /tmp/demo-health.json >/dev/null 2>&1; then
+              ready=1
+              break
+            fi
+            echo "Demo Studio container not ready yet (attempt ${attempt}, HTTP ${code})"
+            sleep 10
+          done
+          test "${ready}" -eq 1
+          jq '{ok,service,version}' /tmp/demo-health.json
+
+      - name: Verify MCP initialize and tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://${TARGET_DOMAIN}"
+          auth=()
+          if [ -n "${DEMO_STUDIO_API_KEY:-}" ]; then
+            auth=(-H "Authorization: Bearer ${DEMO_STUDIO_API_KEY}")
+          fi
+
+          curl -fsS -X POST "${base}/mcp"             "${auth[@]}"             -H 'content-type: application/json'             -H 'accept: application/json, text/event-stream'             --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"ric-demo-studio-deploy","version":"1"}}}'             > /tmp/demo-mcp-init.json
+          jq -e '.result.serverInfo.name == "viiversion-demo-studio"' /tmp/demo-mcp-init.json >/dev/null
+
+          curl -fsS -X POST "${base}/mcp"             "${auth[@]}"             -H 'content-type: application/json'             -H 'accept: application/json, text/event-stream'             --data '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'             > /tmp/demo-mcp-tools.json
+          jq -e             '([.result.tools[].name] | sort) == (["create_demo_video","get_demo_job"] | sort)'             /tmp/demo-mcp-tools.json >/dev/null
+          echo "Demo Studio MCP production surface verified."
+
+      - name: Verify production generation
+        if: env.OPENAI_API_KEY != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://${TARGET_DOMAIN}"
+          auth=()
+          if [ -n "${DEMO_STUDIO_API_KEY:-}" ]; then
+            auth=(-H "Authorization: Bearer ${DEMO_STUDIO_API_KEY}")
+          fi
+
+          response=$(curl -fsS -X POST "${base}/v1/jobs"             "${auth[@]}"             -H 'content-type: application/json'             --data '{"url":"https://example.com","goal":"Create a short presentation that opens the page and shows its main heading without clicking or submitting anything.","preset":"16:9","captions":true,"voiceover":false,"brand":"VIIVERSION","cta":"Demo Studio production check"}')
+          job_id=$(echo "${response}" | jq -r '.job.id')
+          test -n "${job_id}"
+          test "${job_id}" != "null"
+          echo "Production generation job accepted: ${job_id}"
+
+          completed=0
+          for attempt in $(seq 1 60); do
+            status_json=$(curl -fsS "${base}/v1/jobs/${job_id}" "${auth[@]}")
+            status=$(echo "${status_json}" | jq -r '.status')
+            echo "Generation status: ${status}"
+            if [ "${status}" = "completed" ]; then
+              completed=1
+              break
+            fi
+            if [ "${status}" = "failed" ]; then
+              echo "${status_json}" | jq .
+              exit 1
+            fi
+            sleep 10
+          done
+          test "${completed}" -eq 1
+
+          artifact_code=$(curl -sS -o /tmp/demo-production.mp4 -w '%{http_code}'             "${base}/v1/jobs/${job_id}/artifact" "${auth[@]}")
+          test "${artifact_code}" = "200"
+          test "$(stat -c%s /tmp/demo-production.mp4)" -gt 10000
+          file /tmp/demo-production.mp4
+          echo "Demo Studio production generation verified."
