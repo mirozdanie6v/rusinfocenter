@@ -69,6 +69,28 @@ jobs:
           npm test
           docker version
 
+      - name: Ensure private R2 artifact storage
+        working-directory: demo-studio
+        shell: bash
+        run: |
+          set -euo pipefail
+          bucket="viiversion-demo-studio-artifacts"
+
+          set +e
+          create_output=$(npx wrangler r2 bucket create "${bucket}" 2>&1)
+          create_status=$?
+          set -e
+          if [ "${create_status}" -ne 0 ] && ! echo "${create_output}" | grep -Eiq 'already exists|already owned'; then
+            echo "${create_output}"
+            exit "${create_status}"
+          fi
+          echo "R2 bucket ready: ${bucket}"
+
+          if ! npx wrangler r2 bucket lifecycle list "${bucket}" 2>&1 | grep -Fq 'demo-studio-7d'; then
+            npx wrangler r2 bucket lifecycle add "${bucket}" demo-studio-7d --expire-days 7 --force
+          fi
+          echo "R2 lifecycle ready: 7 days"
+
       - name: Deploy Worker and Container image
         working-directory: demo-studio
         shell: bash
@@ -96,7 +118,7 @@ jobs:
           ready=0
           for attempt in $(seq 1 60); do
             code=$(curl -L -sS --connect-timeout 8 --max-time 40               -o /tmp/demo-health.json -w '%{http_code}'               "${base}/health?deploy=${GITHUB_SHA}" || true)
-            if [ "${code}" = "200" ] && jq -e               '(.ok == true) and (.service == "viiversion-demo-studio") and (.version == "0.9.0")'               /tmp/demo-health.json >/dev/null 2>&1; then
+            if [ "${code}" = "200" ] && jq -e               '(.ok == true) and (.service == "viiversion-demo-studio") and (.version == "0.10.0")'               /tmp/demo-health.json >/dev/null 2>&1; then
               ready=1
               break
             fi
@@ -177,8 +199,17 @@ jobs:
           done
           test "${completed}" -eq 1
 
+          persisted_status=$(curl -fsS "${base}/v1/jobs/${job_id}" "${auth[@]}")
+          echo "${persisted_status}" | jq -e '
+            (.status == "completed") and
+            (.artifactReady == true) and
+            (has("request") | not) and
+            (has("artifactPath") | not) and
+            (has("scenarioPath") | not)
+          ' >/dev/null
+
           code=$(curl -sS -o /tmp/demo-production.mp4 -w '%{http_code}'             "${base}/v1/jobs/${job_id}/artifact" "${auth[@]}")
           test "${code}" = "200"
           test "$(stat -c%s /tmp/demo-production.mp4)" -gt 10000
           file /tmp/demo-production.mp4
-          echo "Plugin-native production generation verified."
+          echo "Durable R2 status and artifact verified."
