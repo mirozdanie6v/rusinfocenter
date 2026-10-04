@@ -205,7 +205,7 @@ jobs:
 
           jq -e             '([.result.tools[].name] | sort) == (["audit_web_app_design","create_demo_video","create_demo_video_from_scenario","get_demo_job","inspect_web_app"] | sort)'             /tmp/demo-mcp-tools.json >/dev/null
 
-          echo "Demo Studio MCP v0.12 production surface verified."
+          echo "Demo Studio MCP production surface verified."
 
       - name: Verify UX Design Brain MCP
         shell: bash
@@ -256,15 +256,44 @@ jobs:
             sed -n 's/^data: //p' /tmp/demo-create.raw | tail -n 1 > /tmp/demo-create.json
           fi
 
-          job_id=$(jq -r '.result.content[0].text | fromjson | .job_id' /tmp/demo-create.json)
+          create_result=$(jq -r '.result.content[0].text | fromjson' /tmp/demo-create.json)
+          job_id=$(echo "${create_result}" | jq -r '.job_id')
+          status_page_url=$(echo "${create_result}" | jq -r '.status_page_url')
+
           test -n "${job_id}"
           test "${job_id}" != "null"
+          test -n "${status_page_url}"
+          test "${status_page_url}" != "null"
+
+          page_code=$(curl -L -sS --connect-timeout 8 --max-time 40             -o /tmp/demo-job-progress.html -w '%{http_code}'             "${status_page_url}")
+          test "${page_code}" = "200"
+          grep -Fq 'Generation progress' /tmp/demo-job-progress.html
 
           completed=0
+          observed_live_progress=0
           for attempt in $(seq 1 60); do
             status_json=$(curl -fsS "${base}/v1/jobs/${job_id}" "${auth[@]}")
+            echo "${status_json}" | jq -e '
+              (.progress | type == "number") and
+              (.stage | type == "string") and
+              (.stageLabel | type == "string") and
+              (.attempt >= 1) and
+              (.maxAttempts >= .attempt) and
+              (.heartbeatAt | type == "string") and
+              (.stageStartedAt | type == "string") and
+              (.history | type == "array") and
+              (.stalled | type == "boolean")
+            ' >/dev/null
+
+            progress=$(echo "${status_json}" | jq -r '.progress')
+            if [ "${progress}" -gt 0 ] && [ "${progress}" -lt 100 ]; then
+              observed_live_progress=1
+            fi
+
             status=$(echo "${status_json}" | jq -r '.status')
-            echo "Generation status: ${status}"
+            stage=$(echo "${status_json}" | jq -r '.stage')
+            current_attempt=$(echo "${status_json}" | jq -r '.attempt')
+            echo "Generation status: ${status} / stage: ${stage} / progress: ${progress}% / attempt: ${current_attempt}"
 
             if [ "${status}" = "completed" ]; then
               completed=1
@@ -280,11 +309,17 @@ jobs:
           done
 
           test "${completed}" -eq 1
+          test "${observed_live_progress}" -eq 1
 
           persisted_status=$(curl -fsS "${base}/v1/jobs/${job_id}" "${auth[@]}")
           echo "${persisted_status}" | jq -e '
             (.status == "completed") and
+            (.stage == "complete") and
+            (.progress == 100) and
             (.artifactReady == true) and
+            (.attempt >= 1) and
+            (.heartbeatAt | type == "string") and
+            (.history | length >= 2) and
             (has("request") | not) and
             (has("artifactPath") | not) and
             (has("scenarioPath") | not)
