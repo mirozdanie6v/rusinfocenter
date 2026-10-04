@@ -1,0 +1,80 @@
+name: Audit confirmed Love Travel booking read-only
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/audit-love-confirmed-20261004.yml']
+permissions:
+  contents: read
+concurrency:
+  group: love-travel-live-test
+  cancel-in-progress: false
+jobs:
+  confirm:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          repository: mirozdanie6v/viiversion
+          ref: 8078c8a1dcf7c04f60b1e351039cbe76924b9f15
+          path: viiversion
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Prepare existing Worker configuration
+        working-directory: viiversion/integration-service
+        run: |
+          npm install --no-fund --no-audit
+          node -e "const fs=require('fs');const c=JSON.parse(fs.readFileSync('wrangler.jsonc'));delete c.routes;fs.writeFileSync('wrangler.shared.jsonc',JSON.stringify(c));"
+      - name: Arm short-lived test access
+        id: arm
+        working-directory: viiversion/integration-service
+        run: |
+          set -euo pipefail
+          token="$(openssl rand -hex 32)"
+          echo "::add-mask::$token"
+          printf '%s' "$token" | npx wrangler secret put BOKUN_BOOKING_TEST_TOKEN --config wrangler.shared.jsonc >/dev/null
+          echo "token=$token" >> "$GITHUB_OUTPUT"
+      - name: Read original test status
+        env:
+          BOOKING_TEST_TOKEN: ${{ steps.arm.outputs.token }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 20); do
+            status="$(curl -sS -o /tmp/old.json -w '%{http_code}' 'https://integration.viiversion.com/admin/bokun/pilot/booking?vendorId=137689&code=NHA-105381046' -H "x-viiversion-booking-test-token: $BOOKING_TEST_TOKEN")"
+            if [ "$status" = 200 ]; then break; fi
+            echo "Waiting for test-token deployment: HTTP $status"
+            sleep 3
+          done
+          test "$status" = 200
+          jq '{bookingId,confirmationCode,status,paymentStatus,externalBookingReference}' /tmp/old.json
+      - name: Audit existing confirmed booking with no booking mutations
+        env:
+          BOOKING_TEST_TOKEN: ${{ steps.arm.outputs.token }}
+        run: |
+          set -euo pipefail
+          curl -fsS 'https://integration.viiversion.com/admin/bokun/pilot/booking?vendorId=137689&code=NHA-105698735' -H "x-viiversion-booking-test-token: $BOOKING_TEST_TOKEN" > /tmp/readback.json
+          jq '{
+            keys:keys,
+            bookingId,confirmationCode,status,paymentType,totalPaid,externalBookingReference,
+            seller:{id:.seller.id,title:.seller.title},
+            bookingChannel:.bookingChannel,
+            customer:{firstName:.customer.firstName,lastName:.customer.lastName},
+            activityBookings:[.activityBookings[]?|{bookingId,parentBookingId,confirmationCode,productConfirmationCode,status,title,startDateTime,date,channelId,supplier:{id:.supplier.id,title:.supplier.title},product:{id:.product.id,title:.product.title}}],
+            productBookings:[.productBookings[]?|{bookingId,status,title,startDateTime}]
+          }' /tmp/readback.json
+          jq -e '.status == "CONFIRMED" and .seller.id == 137689 and .totalPaid == 0 and (.activityBookings | length) == 1 and .activityBookings[0].status == "CONFIRMED" and .activityBookings[0].product.id == 1287578' /tmp/readback.json
+      - name: Disarm test access
+        if: always()
+        working-directory: viiversion/integration-service
+        run: |
+          printf 'y\n' | npx wrangler secret delete BOKUN_BOOKING_TEST_TOKEN --config wrangler.shared.jsonc
+          for attempt in $(seq 1 20); do
+            if curl -fsS 'https://integration.viiversion.com/api/bokun/status?vendorId=137689' | jq -e '.oneTimeBookingTestArmed == false and .realBookingWriteEnabled == false'; then exit 0; fi
+            sleep 3
+          done
+          exit 1
