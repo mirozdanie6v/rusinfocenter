@@ -48,7 +48,14 @@ jobs:
         env:
           BOOKING_TEST_TOKEN: ${{ steps.arm.outputs.token }}
         run: |
-          curl -fsS 'https://integration.viiversion.com/admin/bokun/pilot/booking?vendorId=137689&code=NHA-105381046' -H "x-viiversion-booking-test-token: $BOOKING_TEST_TOKEN" > /tmp/old.json
+          set -euo pipefail
+          for attempt in $(seq 1 20); do
+            status="$(curl -sS -o /tmp/old.json -w '%{http_code}' 'https://integration.viiversion.com/admin/bokun/pilot/booking?vendorId=137689&code=NHA-105381046' -H "x-viiversion-booking-test-token: $BOOKING_TEST_TOKEN")"
+            if [ "$status" = 200 ]; then break; fi
+            echo "Waiting for test-token deployment: HTTP $status"
+            sleep 3
+          done
+          test "$status" = 200
           jq '{bookingId,confirmationCode,status,paymentStatus,externalBookingReference}' /tmp/old.json
       - name: Create one fresh reservation and confirm with zero payment
         env:
@@ -156,4 +163,8 @@ jobs:
         working-directory: viiversion/integration-service
         run: |
           printf 'y\n' | npx wrangler secret delete BOKUN_BOOKING_TEST_TOKEN --config wrangler.shared.jsonc
-          curl -fsS 'https://integration.viiversion.com/api/bokun/status?vendorId=137689' | jq -e '.oneTimeBookingTestArmed == false and .realBookingWriteEnabled == false'
+          for attempt in $(seq 1 20); do
+            if curl -fsS 'https://integration.viiversion.com/api/bokun/status?vendorId=137689' | jq -e '.oneTimeBookingTestArmed == false and .realBookingWriteEnabled == false'; then exit 0; fi
+            sleep 3
+          done
+          exit 1
