@@ -2,6 +2,8 @@ name: Check Demo Studio Public
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '23 * * * *'
   push:
     branches:
       - main
@@ -15,7 +17,12 @@ jobs:
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    env:
+      DEMO_STUDIO_PRODUCTION_HYBRID: ${{ vars.DEMO_STUDIO_PRODUCTION_HYBRID }}
     steps:
+      - name: Checkout release marker
+        uses: actions/checkout@v5
+
       - name: Inspect public root
         shell: bash
         run: |
@@ -34,8 +41,25 @@ jobs:
           grep -Fq 'Turn web apps into polished demo videos.' /tmp/root.body
           echo "Public root is valid."
 
-      - name: Inspect health
+      - name: Inspect health and release drift
         shell: bash
         run: |
           set -euo pipefail
-          curl -fsS https://demostudio.viiversion.com/health | jq .
+          expected_version=$(awk -F= '/^release=/{print $2}' .deploy-demo-studio)
+          hybrid="${DEMO_STUDIO_PRODUCTION_HYBRID:-true}"
+          if [ "${hybrid}" = "false" ]; then
+            expected_mode="standard"
+          else
+            expected_mode="hybrid"
+          fi
+
+          curl -fsS https://demostudio.viiversion.com/health > /tmp/demo-health.json
+          jq . /tmp/demo-health.json
+          jq -e --arg version "${expected_version}" --arg mode "${expected_mode}" '
+            (.ok == true) and
+            (.service == "viiversion-demo-studio") and
+            (.version == $version) and
+            (.generationMode == $mode)
+          ' /tmp/demo-health.json >/dev/null
+
+          echo "Production health matches release ${expected_version} in ${expected_mode} mode."
