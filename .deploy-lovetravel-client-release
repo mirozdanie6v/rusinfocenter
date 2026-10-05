@@ -1,0 +1,7 @@
+{
+  "approved": true,
+  "release": "two-tours-multilang-ai-client-demo",
+  "integration_commit": "56e94790f0c014d10eced76db2ad8b2b50dbcba7",
+  "lovetravel_commit": "5a0d7d9e35855452158449f73eceef2654dd7ce9",
+  "writesDuringDeploy": false
+}
