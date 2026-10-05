@@ -24,6 +24,7 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       DEMO_STUDIO_API_KEY: ${{ secrets.DEMO_STUDIO_API_KEY }}
+      DEMO_STUDIO_PRODUCTION_HYBRID: ${{ vars.DEMO_STUDIO_PRODUCTION_HYBRID }}
       TARGET_DOMAIN: demostudio.viiversion.com
       WORKER_NAME: viiversion-demo-studio
 
@@ -75,11 +76,18 @@ jobs:
           else
             echo "RIC OpenAI key: missing"
           fi
-          if [ -n "${DEMO_STUDIO_API_KEY:-}" ]; then
-            echo "Demo Studio API key: available"
-          else
-            echo "Demo Studio API key: missing; anonymous safety quotas remain enabled"
-          fi
+          test -n "${DEMO_STUDIO_API_KEY:-}"
+          echo "Demo Studio API key: available (required for production beta)"
+
+          hybrid="${DEMO_STUDIO_PRODUCTION_HYBRID:-true}"
+          case "${hybrid}" in
+            true|false) ;;
+            *)
+              echo "DEMO_STUDIO_PRODUCTION_HYBRID must be true or false."
+              exit 1
+              ;;
+          esac
+          echo "Demo Studio production hybrid mode: ${hybrid}"
 
       - name: Install and validate pinned Demo Studio
         working-directory: demo-studio
@@ -92,7 +100,7 @@ jobs:
           test "$(node -p "require('./package.json').version")" = "${expected_version}"
           test "$(git rev-parse HEAD)" = "${expected_source}"
 
-          npm install --no-fund --no-audit
+          npm ci --no-fund --no-audit
           npm run typecheck
           npm test
           docker version
@@ -136,9 +144,10 @@ jobs:
           if [ -n "${OPENAI_API_KEY:-}" ]; then
             printf '%s' "${OPENAI_API_KEY}" | npx wrangler secret put OPENAI_API_KEY --config wrangler.jsonc
           fi
-          if [ -n "${DEMO_STUDIO_API_KEY:-}" ]; then
-            printf '%s' "${DEMO_STUDIO_API_KEY}" | npx wrangler secret put DEMO_STUDIO_API_KEY --config wrangler.jsonc
-          fi
+          printf '%s' "${DEMO_STUDIO_API_KEY}" | npx wrangler secret put DEMO_STUDIO_API_KEY --config wrangler.jsonc
+
+          hybrid="${DEMO_STUDIO_PRODUCTION_HYBRID:-true}"
+          printf '%s' "${hybrid}" | npx wrangler secret put DEMO_STUDIO_PRODUCTION_HYBRID --config wrangler.jsonc
 
       - name: Verify production health
         shell: bash
@@ -146,12 +155,18 @@ jobs:
           set -euo pipefail
           base="https://${TARGET_DOMAIN}"
           expected_version="${{ steps.release.outputs.version }}"
+          hybrid="${DEMO_STUDIO_PRODUCTION_HYBRID:-true}"
+          if [ "${hybrid}" = "false" ]; then
+            expected_mode="standard"
+          else
+            expected_mode="hybrid"
+          fi
           ready=0
 
           for attempt in $(seq 1 60); do
             code=$(curl -L -sS --connect-timeout 8 --max-time 40               -o /tmp/demo-health.json -w '%{http_code}'               "${base}/health?deploy=${GITHUB_SHA}" || true)
 
-            if [ "${code}" = "200" ] && jq -e --arg version "${expected_version}"               '(.ok == true) and (.service == "viiversion-demo-studio") and (.version == $version)'               /tmp/demo-health.json >/dev/null 2>&1; then
+            if [ "${code}" = "200" ] && jq -e --arg version "${expected_version}" --arg mode "${expected_mode}"               '(.ok == true) and (.service == "viiversion-demo-studio") and (.version == $version) and (.generationMode == $mode)'               /tmp/demo-health.json >/dev/null 2>&1; then
               ready=1
               break
             fi
@@ -161,7 +176,7 @@ jobs:
           done
 
           test "${ready}" -eq 1
-          jq '{ok,service,version}' /tmp/demo-health.json
+          jq '{ok,service,version,generationMode}' /tmp/demo-health.json
 
       - name: Verify public landing page
         shell: bash
