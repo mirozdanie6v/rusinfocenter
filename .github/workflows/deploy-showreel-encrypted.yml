@@ -1,0 +1,24 @@
+name: Deploy private showreel processor via shared Cloudflare connection
+on:
+  push:
+    branches: [codex/showreel-deploy]
+    paths: [.deploy-showreel/release.enc.json, .github/workflows/deploy-showreel-encrypted.yml, .github/scripts/deploy-showreel.py]
+permissions:
+  contents: read
+concurrency:
+  group: viiversion-showreel-processor
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with: {node-version: 22}
+      - run: python -m pip install --quiet cryptography==46.0.5
+      - name: Decrypt private release, deploy isolated processor and verify vision
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: python .github/scripts/deploy-showreel.py
