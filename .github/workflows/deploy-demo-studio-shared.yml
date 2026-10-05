@@ -110,27 +110,16 @@ jobs:
 
           echo "Validated exact Demo Studio source ${expected_source} at version ${expected_version}."
 
-      - name: Ensure private R2 artifact storage
+      - name: Verify pre-provisioned R2 binding
         working-directory: demo-studio
         shell: bash
         run: |
           set -euo pipefail
-          bucket="viiversion-demo-studio-artifacts"
-
-          set +e
-          create_output=$(npx wrangler r2 bucket create "${bucket}" 2>&1)
-          create_status=$?
-          set -e
-          if [ "${create_status}" -ne 0 ] && ! echo "${create_output}" | grep -Eiq 'already exists|already owned'; then
-            echo "${create_output}"
-            exit "${create_status}"
-          fi
-          echo "R2 bucket ready: ${bucket}"
-
-          if ! npx wrangler r2 bucket lifecycle list "${bucket}" 2>&1 | grep -Fq 'demo-studio-7d'; then
-            npx wrangler r2 bucket lifecycle add "${bucket}" demo-studio-7d --expire-days 7 --force
-          fi
-          echo "R2 lifecycle ready: 7 days"
+          grep -Fq '"binding": "DEMO_STUDIO_ARTIFACTS"' wrangler.jsonc
+          grep -Fq '"bucket_name": "viiversion-demo-studio-artifacts"' wrangler.jsonc
+          echo "R2 binding configuration verified."
+          echo "Bucket provisioning and the 7-day lifecycle are infrastructure concerns and are not mutated by an application release."
+          echo "The post-deploy production-generation gate verifies that the existing R2 binding can persist and retrieve a real MP4."
 
       - name: Deploy Worker and Container image
         working-directory: demo-studio
