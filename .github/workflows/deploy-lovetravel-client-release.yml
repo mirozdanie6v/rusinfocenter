@@ -1,0 +1,91 @@
+name: Deploy LoveTravel client release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.deploy-lovetravel-client-release'
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Checkout integration service
+        uses: actions/checkout@v5
+        with:
+          repository: mirozdanie6v/viiversion
+          ref: main
+          path: viiversion
+
+      - name: Checkout LoveTravel
+        uses: actions/checkout@v5
+        with:
+          repository: mirozdanie6v/LoveTravel-
+          ref: main
+          path: lovetravel
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Verify and deploy integration service
+        working-directory: viiversion/integration-service
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --no-fund --no-audit
+          npm run typecheck
+          npm test
+          node <<'NODE'
+          const fs = require('fs');
+          const cfg = JSON.parse(fs.readFileSync('wrangler.jsonc','utf8'));
+          delete cfg.routes;
+          fs.writeFileSync('wrangler.deploy.jsonc', JSON.stringify(cfg,null,2)+'\n');
+          NODE
+          npx wrangler deploy --config wrangler.deploy.jsonc
+
+      - name: Verify integration stayed connected
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS 'https://integration.viiversion.com/api/bokun/status?vendorId=137689' > /tmp/status.json
+          jq -e '.ok == true and .oauthConnected == true and .restCredentialsReady == true and .vendorId == "137689"' /tmp/status.json >/dev/null
+          jq '{ok,vendorId,oauthConnected,restCredentialsReady,realBookingWriteEnabled,oneTimeBookingTestArmed}' /tmp/status.json
+
+          code="$(curl -sS -o /tmp/demo-no-token.txt -w '%{http_code}'             -X POST 'https://integration.viiversion.com/internal/lovetravel/bokun/demo-submit?vendorId=137689&currency=USD'             -H 'content-type: application/json'             --data '{}')"
+          test "$code" = 401
+
+      - name: Verify and deploy LoveTravel
+        working-directory: lovetravel
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --no-fund --no-audit
+          npm run check
+          npx wrangler deploy --config wrangler.jsonc
+
+      - name: Verify live two-tour multilingual release
+        shell: bash
+        run: |
+          set -euo pipefail
+          for locale in ru en vi zh ko; do
+            curl -fsS "https://lovetravel.viiversion.com/api/bokun/tours?locale=$locale" > "/tmp/tours-$locale.json"
+            jq -e '.ok == true and .source == "bokun" and .vendorId == "137689" and ([.tours[].id]|sort) == ["1287578","1287580"]' "/tmp/tours-$locale.json" >/dev/null
+          done
+
+          code="$(curl -sS -o /tmp/app-demo-no-token.json -w '%{http_code}'             -X POST 'https://lovetravel.viiversion.com/api/bokun/client-demo/submit'             -H 'content-type: application/json'             --data '{}')"
+          test "$code" = 403
+
+          for locale in ru en vi zh ko; do
+            curl -fsS -X POST 'https://lovetravel.viiversion.com/api/ai/chat'               -H 'content-type: application/json'               -H "x-max-tour-locale: $locale"               --data "{"locale":"$locale","message":"Tell me about the available tours"}" > "/tmp/ai-$locale.json"
+            jq -e '.ok == true and (.reply|type=="string") and (.reply|length>0) and (.tourId == "" or .tourId == "1287578" or .tourId == "1287580") and ((.source // "") | contains("bokun"))' "/tmp/ai-$locale.json" >/dev/null
+          done
+
+          echo 'Live release verified: 2 Bókun tours, 5 locales, Bókun-bound AI, demo write gate closed without invite.'
