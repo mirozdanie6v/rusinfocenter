@@ -114,9 +114,14 @@ jobs:
             exit 1
           fi
 
-          jq -e '.success == true and .result.status == "active"' \
-            /tmp/cloudflare-token.json >/dev/null
-          echo "Cloudflare API token is active (${token_scope})."
+          if jq -e '.success == true and .result.status == "active"' \
+            /tmp/cloudflare-token.json >/dev/null; then
+            echo "Cloudflare API token is active (${token_scope})."
+          else
+            echo "Cloudflare token verification response:"
+            jq '{success, status: .result.status, errors}' /tmp/cloudflare-token.json
+            exit 1
+          fi
 
       - name: Install and validate pinned Demo Studio
         working-directory: demo-studio
