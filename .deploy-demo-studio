@@ -1,5 +1,5 @@
 demostudio.viiversion.com
-release=0.14.0
-source=aa7079dfcb85cfc156c67662c4b80e11f6400e7a
+release=0.14.1
+source=aece615aa82adf34e2fb60f08bae2a4979c2c057
 channel=production
-retry=token-diagnostic-2026-10-05T20-53+07
+retry=premium-ru-en-default-2026-10-05T22-59+07
