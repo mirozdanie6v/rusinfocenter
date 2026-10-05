@@ -100,7 +100,7 @@ jobs:
           test "$(node -p "require('./package.json').version")" = "${expected_version}"
           test "$(git rev-parse HEAD)" = "${expected_source}"
 
-          npm install --no-fund --no-audit
+          npm ci --no-fund --no-audit
           npm run typecheck
           npm test
           docker version
