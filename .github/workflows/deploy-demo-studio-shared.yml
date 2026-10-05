@@ -76,8 +76,11 @@ jobs:
           else
             echo "RIC OpenAI key: missing"
           fi
-          test -n "${DEMO_STUDIO_API_KEY:-}"
-          echo "Demo Studio API key: available (required for production beta)"
+          if [ -n "${DEMO_STUDIO_API_KEY:-}" ]; then
+            echo "Demo Studio access mode: authenticated"
+          else
+            echo "Demo Studio access mode: anonymous edge-quota mode"
+          fi
 
           hybrid="${DEMO_STUDIO_PRODUCTION_HYBRID:-true}"
           case "${hybrid}" in
@@ -144,7 +147,9 @@ jobs:
           if [ -n "${OPENAI_API_KEY:-}" ]; then
             printf '%s' "${OPENAI_API_KEY}" | npx wrangler secret put OPENAI_API_KEY --config wrangler.jsonc
           fi
-          printf '%s' "${DEMO_STUDIO_API_KEY}" | npx wrangler secret put DEMO_STUDIO_API_KEY --config wrangler.jsonc
+          if [ -n "${DEMO_STUDIO_API_KEY:-}" ]; then
+            printf '%s' "${DEMO_STUDIO_API_KEY}" | npx wrangler secret put DEMO_STUDIO_API_KEY --config wrangler.jsonc
+          fi
 
           hybrid="${DEMO_STUDIO_PRODUCTION_HYBRID:-true}"
           printf '%s' "${hybrid}" | npx wrangler secret put DEMO_STUDIO_PRODUCTION_HYBRID --config wrangler.jsonc
@@ -161,12 +166,17 @@ jobs:
           else
             expected_mode="hybrid"
           fi
+          if [ -n "${DEMO_STUDIO_API_KEY:-}" ]; then
+            expected_access="authenticated"
+          else
+            expected_access="anonymous"
+          fi
           ready=0
 
           for attempt in $(seq 1 60); do
             code=$(curl -L -sS --connect-timeout 8 --max-time 40               -o /tmp/demo-health.json -w '%{http_code}'               "${base}/health?deploy=${GITHUB_SHA}" || true)
 
-            if [ "${code}" = "200" ] && jq -e --arg version "${expected_version}" --arg mode "${expected_mode}"               '(.ok == true) and (.service == "viiversion-demo-studio") and (.version == $version) and (.generationMode == $mode)'               /tmp/demo-health.json >/dev/null 2>&1; then
+            if [ "${code}" = "200" ] && jq -e --arg version "${expected_version}" --arg mode "${expected_mode}" --arg access "${expected_access}"               '(.ok == true) and (.service == "viiversion-demo-studio") and (.version == $version) and (.generationMode == $mode) and (.accessMode == $access)'               /tmp/demo-health.json >/dev/null 2>&1; then
               ready=1
               break
             fi
@@ -176,7 +186,7 @@ jobs:
           done
 
           test "${ready}" -eq 1
-          jq '{ok,service,version,generationMode}' /tmp/demo-health.json
+          jq '{ok,service,version,generationMode,accessMode}' /tmp/demo-health.json
 
       - name: Verify public landing page
         shell: bash
