@@ -92,6 +92,19 @@ jobs:
           esac
           echo "Demo Studio production hybrid mode: ${hybrid}"
 
+      - name: Verify Cloudflare API token
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS \
+            "https://api.cloudflare.com/client/v4/user/tokens/verify" \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            > /tmp/cloudflare-token.json
+
+          jq -e '.success == true and .result.status == "active"' \
+            /tmp/cloudflare-token.json >/dev/null
+          echo "Cloudflare API token is active."
+
       - name: Install and validate pinned Demo Studio
         working-directory: demo-studio
         shell: bash
