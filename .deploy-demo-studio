@@ -2,4 +2,4 @@ demostudio.viiversion.com
 release=0.14.0
 source=aa7079dfcb85cfc156c67662c4b80e11f6400e7a
 channel=production
-retry=token-refresh-2026-10-05T20-48+07
+retry=token-scope-check-2026-10-05T20-52+07
