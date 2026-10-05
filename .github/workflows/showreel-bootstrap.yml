@@ -1,0 +1,44 @@
+name: Bootstrap private showreel deployment
+on:
+  push:
+    branches: [codex/showreel-deploy]
+    paths: [.github/workflows/showreel-bootstrap.yml]
+permissions:
+  contents: read
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - run: python -m pip install --quiet cryptography==46.0.5
+      - name: Prepare encrypted transport and verify real vision
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: python
+        run: |
+          import os, json, base64, hashlib, urllib.request, urllib.error, struct, zlib
+          from cryptography.hazmat.primitives.asymmetric import rsa
+          from cryptography.hazmat.primitives import serialization
+          from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+          token, account = os.environ["CF_TOKEN"], os.environ["CF_ACCOUNT"]
+          assert token and account, "Shared connection is unavailable"
+          key = rsa.generate_private_key(public_exponent=65537,key_size=3072)
+          pem = key.private_bytes(serialization.Encoding.PEM,serialization.PrivateFormat.PKCS8,serialization.NoEncryption())
+          nonce = os.urandom(12)
+          sealed = AESGCM(hashlib.sha256(("showreel-deploy-v1:"+token).encode()).digest()).encrypt(nonce,pem,b"showreel-deploy-v1")
+          public = key.public_key().public_bytes(serialization.Encoding.PEM,serialization.PublicFormat.SubjectPublicKeyInfo).decode()
+          print("SHOWREEL_ENVELOPE="+json.dumps({"public":public,"sealed":base64.b64encode(nonce+sealed).decode()}))
+          def chunk(name,data):
+              return struct.pack(">I",len(data))+name+data+struct.pack(">I",zlib.crc32(name+data)&0xffffffff)
+          png=b"\x89PNG\r\n\x1a\n"+chunk(b"IHDR",struct.pack(">IIBBBBB",32,32,8,2,0,0,0))+chunk(b"IDAT",zlib.compress((b"\0"+b"\xff\0\0"*32)*32))+chunk(b"IEND",b"")
+          payload={"model":"@cf/qwen/qwen3.8-27b","messages":[{"role":"user","content":[{"type":"text","text":'Inspect the image. Return JSON only with dominant_color set to one of red, green, blue, white, black.'},{"type":"image_url","image_url":{"url":"data:image/png;base64,"+base64.b64encode(png).decode()}}]}],"stream":False,"store":False,"max_completion_tokens":100,"chat_template_kwargs":{"enable_thinking":False}}
+          req=urllib.request.Request("https://api.cloudflare.com/client/v4/accounts/"+account+"/ai/v1/chat/completions",data=json.dumps(payload).encode(),headers={"Authorization":"Bearer "+token,"Content-Type":"application/json"})
+          try:
+              with urllib.request.urlopen(req,timeout=120) as response: result=json.load(response)
+              choice=result["choices"][0]
+              content=choice["message"]["content"]
+              print("VISION_PROBE="+json.dumps({"finish_reason":choice.get("finish_reason"),"content":content}))
+          except urllib.error.HTTPError as error:
+              print("VISION_PROBE_HTTP="+str(error.code))
+              raise SystemExit(1)
