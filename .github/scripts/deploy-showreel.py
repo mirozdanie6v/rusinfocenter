@@ -21,9 +21,7 @@ with tarfile.open(fileobj=io.BytesIO(base64.b64decode(payload["archive"])),mode=
     tar.extractall(root,filter="data")
 secret_path=root/"runtime-secrets.json";secret_path.write_text(json.dumps(runtime));secret_path.chmod(0o600)
 base="https://api.cloudflare.com/client/v4/accounts/"+account
-req=urllib.request.Request(base+"/workers/subdomain",headers={"Authorization":"Bearer "+token})
-with urllib.request.urlopen(req,timeout=30) as response: subdomain=json.load(response)["result"]["subdomain"]
-url="https://viiversion-showreel-processor."+subdomain+".workers.dev"
+url="https://viiversion-showreel-processor.mirozdanie6v.workers.dev"
 directory=root/"cloudflare/processor"
 config=json.loads((directory/"wrangler.json").read_text())
 assert config["name"]=="viiversion-showreel-processor" and config["containers"][0]["max_instances"]==1
