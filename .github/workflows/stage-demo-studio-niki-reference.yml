@@ -1,0 +1,49 @@
+name: Stage Demo Studio Niki Reference
+
+on:
+  push:
+    branches:
+      - vii-125-demo-studio-voice-seed
+    paths:
+      - '.github/workflows/stage-demo-studio-niki-reference.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  stage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SOURCE_URL: 'https://sdmntpraustraliaeast.oaiusercontent.com/files/00000000-db14-81fa-bda1-3457fc50e924/raw?se=2026-10-06T18%3A35%3A01Z&sp=r&sv=2026-02-06&sr=b&scid=795f2edf-7758-5a70-b09f-60e6a456cc06&skoid=27fbae2c-124f-4566-a0d8-1b07a5a41c53&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-10-06T02%3A09%3A31Z&ske=2026-10-07T02%3A09%3A31Z&sks=b&skv=2026-02-06&sig=XsZj9gnsfqOSlaLI1D%2BzXkfakSP6vkKmeFK08Ea/kbI%3D'
+    steps:
+      - name: Download approved source artifact
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 --connect-timeout 10 --max-time 180 \
+            "${SOURCE_URL}" -o /tmp/max-tour-v9.zip
+          unzip -q /tmp/max-tour-v9.zip voiceover_ru.wav -d /tmp/reference
+          test -s /tmp/reference/voiceover_ru.wav
+
+      - name: Prepare canonical Niki reference
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          ffmpeg -y -hide_banner -loglevel error \
+            -i /tmp/reference/voiceover_ru.wav \
+            -t 8.8 \
+            -af "highpass=f=70,lowpass=f=11500,loudnorm=I=-17:TP=-2:LRA=8" \
+            -ar 24000 -ac 1 niki-reference.wav
+          test -s niki-reference.wav
+          sha256sum niki-reference.wav > niki-reference.sha256
+
+      - name: Upload private workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: demo-studio-niki-reference-v1
+          path: |
+            niki-reference.wav
+            niki-reference.sha256
+          if-no-files-found: error
+          retention-days: 90
