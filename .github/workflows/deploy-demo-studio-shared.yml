@@ -23,7 +23,11 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      DEMO_STUDIO_API_KEY: ${{ secrets.DEMO_STUDIO_API_KEY }}
+      DEMO_STUDIO_OAUTH_ISSUER: ${{ vars.DEMO_STUDIO_OAUTH_ISSUER }}
+      DEMO_STUDIO_OAUTH_JWKS_URI: ${{ vars.DEMO_STUDIO_OAUTH_JWKS_URI }}
+      DEMO_STUDIO_OAUTH_AUDIENCE: ${{ vars.DEMO_STUDIO_OAUTH_AUDIENCE || 'https://demostudio.viiversion.com' }}
+      DEMO_STUDIO_OAUTH_SCOPES: ${{ vars.DEMO_STUDIO_OAUTH_SCOPES || 'demo.inspect demo.generate demo.read' }}
+      DEMO_STUDIO_OAUTH_TEST_TOKEN: ${{ secrets.DEMO_STUDIO_OAUTH_TEST_TOKEN }}
       DEMO_STUDIO_PRODUCTION_HYBRID: ${{ vars.DEMO_STUDIO_PRODUCTION_HYBRID }}
       TARGET_DOMAIN: demostudio.viiversion.com
       WORKER_NAME: viiversion-demo-studio
@@ -76,11 +80,11 @@ jobs:
           else
             echo "RIC OpenAI key: missing"
           fi
-          if [ -n "${DEMO_STUDIO_API_KEY:-}" ]; then
-            echo "Demo Studio access mode: authenticated"
-          else
-            echo "Demo Studio access mode: anonymous edge-quota mode"
-          fi
+          test -n "${DEMO_STUDIO_OAUTH_ISSUER:-}"
+          test -n "${DEMO_STUDIO_OAUTH_JWKS_URI:-}"
+          test "${DEMO_STUDIO_OAUTH_AUDIENCE}" = "https://${TARGET_DOMAIN}"
+          echo "Demo Studio access mode: OAuth 2.1"
+          echo "OAuth issuer/JWKS: configured"
 
           hybrid="${DEMO_STUDIO_PRODUCTION_HYBRID:-true}"
           case "${hybrid}" in
@@ -152,6 +156,35 @@ jobs:
           echo "Bucket provisioning and the 7-day lifecycle are infrastructure concerns and are not mutated by an application release."
           echo "The post-deploy production-generation gate verifies that the existing R2 binding can persist and retrieve a real MP4."
 
+      - name: Download approved Niki release reference
+        uses: actions/download-artifact@v4
+        with:
+          name: demo-studio-niki-reference-v1
+          path: niki-reference
+          github-token: ${{ github.token }}
+          run-id: 37511817608
+
+      - name: Seed approved Niki reference into private R2
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s niki-reference/niki-reference.wav
+          npx wrangler@4 r2 object put \
+            viiversion-demo-studio-artifacts/voice-references/niki-reference.wav \
+            --file=niki-reference/niki-reference.wav \
+            --content-type=audio/wav \
+            --remote
+
+          npx wrangler@4 r2 object get \
+            viiversion-demo-studio-artifacts/voice-references/niki-reference.wav \
+            --file=/tmp/niki-reference-check.wav \
+            --remote
+
+          expected=$(sha256sum niki-reference/niki-reference.wav | awk '{print $1}')
+          actual=$(sha256sum /tmp/niki-reference-check.wav | awk '{print $1}')
+          test "${actual}" = "${expected}"
+          echo "Approved Niki reference verified in R2."
+
       - name: Deploy Worker and Container image
         working-directory: demo-studio
         shell: bash
@@ -167,9 +200,15 @@ jobs:
           if [ -n "${OPENAI_API_KEY:-}" ]; then
             printf '%s' "${OPENAI_API_KEY}" | npx wrangler secret put OPENAI_API_KEY --config wrangler.jsonc
           fi
-          if [ -n "${DEMO_STUDIO_API_KEY:-}" ]; then
-            printf '%s' "${DEMO_STUDIO_API_KEY}" | npx wrangler secret put DEMO_STUDIO_API_KEY --config wrangler.jsonc
-          fi
+          for key in \
+            DEMO_STUDIO_OAUTH_ISSUER \
+            DEMO_STUDIO_OAUTH_JWKS_URI \
+            DEMO_STUDIO_OAUTH_AUDIENCE \
+            DEMO_STUDIO_OAUTH_SCOPES; do
+            value="${!key:-}"
+            test -n "${value}"
+            printf '%s' "${value}" | npx wrangler secret put "${key}" --config wrangler.jsonc
+          done
 
           hybrid="${DEMO_STUDIO_PRODUCTION_HYBRID:-true}"
           printf '%s' "${hybrid}" | npx wrangler secret put DEMO_STUDIO_PRODUCTION_HYBRID --config wrangler.jsonc
@@ -186,11 +225,7 @@ jobs:
           else
             expected_mode="hybrid"
           fi
-          if [ -n "${DEMO_STUDIO_API_KEY:-}" ]; then
-            expected_access="authenticated"
-          else
-            expected_access="anonymous"
-          fi
+          expected_access="oauth"
           ready=0
 
           for attempt in $(seq 1 60); do
@@ -226,8 +261,8 @@ jobs:
           set -euo pipefail
           base="https://${TARGET_DOMAIN}"
           auth=()
-          if [ -n "${DEMO_STUDIO_API_KEY:-}" ]; then
-            auth=(-H "Authorization: Bearer ${DEMO_STUDIO_API_KEY}")
+          if [ -n "${DEMO_STUDIO_OAUTH_TEST_TOKEN:-}" ]; then
+            auth=(-H "Authorization: Bearer ${DEMO_STUDIO_OAUTH_TEST_TOKEN}")
           fi
 
           normalize_mcp_response() {
@@ -248,14 +283,56 @@ jobs:
           curl -fsS -X POST "${base}/mcp"             "${auth[@]}"             -H 'content-type: application/json'             -H 'accept: application/json, text/event-stream'             --data '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'             > /tmp/demo-mcp-tools.raw
           normalize_mcp_response /tmp/demo-mcp-tools.raw /tmp/demo-mcp-tools.json
 
-          jq -e             '([.result.tools[].name] | sort) == (["audit_web_app_design","create_demo_video","create_demo_video_from_scenario","get_demo_job","inspect_web_app"] | sort)'             /tmp/demo-mcp-tools.json >/dev/null
+          jq -e             '([.result.tools[].name] | sort) == (["audit_web_app_design","create_demo_video","create_demo_video_from_scenario","get_demo_job","get_profile","inspect_web_app"] | sort)'             /tmp/demo-mcp-tools.json >/dev/null
 
           echo "Demo Studio MCP production surface verified."
+
+      - name: Verify OAuth protected-resource metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://${TARGET_DOMAIN}"
+          curl -fsS "${base}/.well-known/oauth-protected-resource" > /tmp/oauth-resource.json
+          jq -e \
+            --arg resource "${base}" \
+            --arg issuer "${DEMO_STUDIO_OAUTH_ISSUER}" \
+            '(.resource == $resource)
+             and (.authorization_servers | index($issuer) != null)
+             and (.scopes_supported | index("demo.inspect") != null)
+             and (.scopes_supported | index("demo.generate") != null)
+             and (.scopes_supported | index("demo.read") != null)' \
+            /tmp/oauth-resource.json >/dev/null
+
+      - name: Verify unauthenticated MCP OAuth challenge
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://${TARGET_DOMAIN}"
+          curl -fsS -X POST "${base}/mcp" \
+            -H 'content-type: application/json' \
+            -H 'accept: application/json, text/event-stream' \
+            --data '{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"inspect_web_app","arguments":{"url":"https://example.com"}}}' \
+            > /tmp/oauth-challenge.raw
+
+          if jq -e . /tmp/oauth-challenge.raw >/dev/null 2>&1; then
+            cp /tmp/oauth-challenge.raw /tmp/oauth-challenge.json
+          else
+            sed -n 's/^data: //p' /tmp/oauth-challenge.raw | tail -n 1 > /tmp/oauth-challenge.json
+          fi
+
+          jq -e '
+            (.result.isError == true)
+            and ((.result._meta["mcp/www_authenticate"] | length) > 0)
+          ' /tmp/oauth-challenge.json >/dev/null
 
       - name: Verify UX Design Brain MCP
         shell: bash
         run: |
           set -euo pipefail
+          if [ -z "${DEMO_STUDIO_OAUTH_TEST_TOKEN:-}" ]; then
+            echo "No short-lived OAuth test token configured; authenticated UX smoke deferred to connector verification."
+            exit 0
+          fi
           base="https://${TARGET_DOMAIN}"
           auth=()
           if [ -n "${DEMO_STUDIO_API_KEY:-}" ]; then
@@ -285,6 +362,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if [ -z "${DEMO_STUDIO_OAUTH_TEST_TOKEN:-}" ]; then
+            echo "No short-lived OAuth test token configured; authenticated generation smoke deferred to connector verification."
+            exit 0
+          fi
           base="https://${TARGET_DOMAIN}"
           auth=()
           if [ -n "${DEMO_STUDIO_API_KEY:-}" ]; then
