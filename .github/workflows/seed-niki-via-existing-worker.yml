@@ -1,0 +1,183 @@
+name: Seed Demo Studio Niki via Existing Worker
+
+on:
+  push:
+    branches:
+      - vii-125-demo-studio-voice-seed
+    paths:
+      - '.github/workflows/seed-niki-via-existing-worker.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: viiversion-demo-studio-production
+  cancel-in-progress: false
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      DEMO_STUDIO_API_KEY: ${{ secrets.DEMO_STUDIO_API_KEY }}
+      SOURCE_URL: 'https://sdmntpraustraliaeast.oaiusercontent.com/files/00000000-059c-81fa-a522-8822cefa80a5/raw?se=2026-10-06T18%3A27%3A54Z&sp=r&sv=2026-02-06&sr=b&scid=137101b0-5c66-52f2-ba8d-a4814722f613&skoid=27fbae2c-124f-4566-a0d8-1b07a5a41c53&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-10-06T01%3A57%3A18Z&ske=2026-10-07T01%3A57%3A18Z&sks=b&skv=2026-02-06&sig=iR3/aPpd1Y2M752EMuHvPnA/IPmPUO9%2BkrhPPyDkOxg%3D'
+      TARGET_DOMAIN: demostudio.viiversion.com
+      PRODUCTION_SOURCE: 3b18789601fc103fd798e257f7cfa89e57c8f917
+
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Verify release credentials
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
+          test -n "${DEMO_STUDIO_API_KEY:-}"
+
+      - name: Checkout exact current production source
+        uses: actions/checkout@v4
+        with:
+          repository: mirozdanie6v/VIIVERSION_Demo_Studio
+          ref: ${{ env.PRODUCTION_SOURCE }}
+          path: demo-studio
+
+      - name: Prepare approved Niki reference
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 --connect-timeout 10 --max-time 180 \
+            "${SOURCE_URL}" -o /tmp/max-tour-v9.zip
+          unzip -q /tmp/max-tour-v9.zip voiceover_ru.wav -d /tmp/reference
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          ffmpeg -y -hide_banner -loglevel error \
+            -i /tmp/reference/voiceover_ru.wav \
+            -t 8.8 \
+            -af "highpass=f=70,lowpass=f=11500,loudnorm=I=-17:TP=-2:LRA=8" \
+            -ar 24000 -ac 1 /tmp/niki-reference.wav
+          test -s /tmp/niki-reference.wav
+          echo "NIKI_SHA256=$(sha256sum /tmp/niki-reference.wav | awk '{print $1}')" >> "${GITHUB_ENV}"
+
+      - name: Install exact production dependencies
+        working-directory: demo-studio
+        run: npm ci --no-fund --no-audit
+
+      - name: Patch one-time authenticated seed endpoint
+        working-directory: demo-studio
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("cloudflare/worker.js")
+          source = path.read_text()
+          anchor = '''    const staticResponse = publicStaticResponse(request);
+              if (staticResponse) return staticResponse;'''
+          patch = '''    if (url.pathname === "/__admin/seed-niki") {
+              const expected = env.DEMO_STUDIO_API_KEY;
+              const header = request.headers.get("authorization") ?? "";
+              if (!expected || header !== "Bearer " + expected) {
+                return new Response("Unauthorized", { status: 401 });
+              }
+
+              const key = "voice-references/niki-reference.wav";
+              if (request.method === "PUT") {
+                const body = await request.arrayBuffer();
+                if (body.byteLength < 10000) {
+                  return new Response("Reference too small", { status: 400 });
+                }
+                await env.DEMO_STUDIO_ARTIFACTS.put(key, body, {
+                  httpMetadata: {
+                    contentType: "audio/wav",
+                    cacheControl: "private, max-age=31536000, immutable",
+                  },
+                });
+                return Response.json({ ok: true, bytes: body.byteLength });
+              }
+
+              if (request.method === "GET") {
+                const object = await env.DEMO_STUDIO_ARTIFACTS.get(key);
+                if (!object) return new Response("Not found", { status: 404 });
+                return new Response(object.body, {
+                  headers: {
+                    "content-type": "audio/wav",
+                    "content-length": String(object.size),
+                    "cache-control": "no-store",
+                  },
+                });
+              }
+
+              return new Response("Method not allowed", { status: 405 });
+            }
+
+            const staticResponse = publicStaticResponse(request);
+              if (staticResponse) return staticResponse;'''
+          if anchor not in source:
+              raise SystemExit("Seed patch anchor not found")
+          path.write_text(source.replace(anchor, patch))
+          PY
+
+      - name: Deploy temporary seed endpoint and seed R2
+        working-directory: demo-studio
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          restore_production() {
+            echo "Restoring exact production Worker source..."
+            git restore cloudflare/worker.js
+            npx wrangler deploy --config wrangler.jsonc
+          }
+          trap restore_production EXIT
+
+          npx wrangler deploy --config wrangler.jsonc
+
+          # Ensure the existing API key is present after the temporary deploy.
+          printf '%s' "${DEMO_STUDIO_API_KEY}" | \
+            npx wrangler secret put DEMO_STUDIO_API_KEY --config wrangler.jsonc
+
+          ready=0
+          for attempt in $(seq 1 30); do
+            code=$(curl -sS -o /tmp/seed-health.txt -w '%{http_code}' \
+              -H "Authorization: Bearer ${DEMO_STUDIO_API_KEY}" \
+              "https://${TARGET_DOMAIN}/__admin/seed-niki" || true)
+            if [ "${code}" = "405" ] || [ "${code}" = "404" ]; then
+              ready=1
+              break
+            fi
+            sleep 3
+          done
+          test "${ready}" -eq 1
+
+          curl -fsS -X PUT \
+            -H "Authorization: Bearer ${DEMO_STUDIO_API_KEY}" \
+            -H "Content-Type: audio/wav" \
+            --data-binary @/tmp/niki-reference.wav \
+            "https://${TARGET_DOMAIN}/__admin/seed-niki" \
+            > /tmp/seed-result.json
+          jq -e '.ok == true and .bytes > 10000' /tmp/seed-result.json >/dev/null
+
+          curl -fsS \
+            -H "Authorization: Bearer ${DEMO_STUDIO_API_KEY}" \
+            "https://${TARGET_DOMAIN}/__admin/seed-niki" \
+            -o /tmp/niki-reference-check.wav
+
+          actual=$(sha256sum /tmp/niki-reference-check.wav | awk '{print $1}')
+          test "${actual}" = "${NIKI_SHA256}"
+          echo "NIKI_REFERENCE_R2=verified"
+          echo "NIKI_REFERENCE_SHA256=${actual}"
+
+      - name: Verify seed endpoint was removed
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          code=$(curl -sS -o /tmp/removed.txt -w '%{http_code}' \
+            -H "Authorization: Bearer ${DEMO_STUDIO_API_KEY}" \
+            "https://${TARGET_DOMAIN}/__admin/seed-niki" || true)
+          test "${code}" != "200"
+          echo "Temporary seed endpoint removed: HTTP ${code}"
