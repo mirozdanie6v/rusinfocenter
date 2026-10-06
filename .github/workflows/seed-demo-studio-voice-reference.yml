@@ -17,7 +17,7 @@ jobs:
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      SOURCE_URL: 'https://sdmntpraustraliaeast.oaiusercontent.com/files/00000000-0384-81fa-80b6-d5f5ae9a288b/raw?se=2026-10-06T18%3A12%3A20Z&sp=r&sv=2026-02-06&sr=b&scid=e3eade2f-c50f-5de5-bb22-d58ee584801e&skoid=27fbae2c-124f-4566-a0d8-1b07a5a41c53&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-10-06T04%3A58%3A45Z&ske=2026-10-07T04%3A58%3A45Z&sks=b&skv=2026-02-06&sig=FF0vh0f6iaLxf%2B7XuiklOo6QQFOtsW8s5IGdJRtIReE%3D'
+      SOURCE_URL: 'https://sdmntpraustraliaeast.oaiusercontent.com/files/00000000-f5dc-81fa-aee5-c8706e301d0d/raw?se=2026-10-06T18%3A20%3A58Z&sp=r&sv=2026-02-06&sr=b&scid=1b36b00b-e2ba-5cf8-baea-5ccf3a3c10ee&skoid=27fbae2c-124f-4566-a0d8-1b07a5a41c53&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-10-06T01%3A54%3A14Z&ske=2026-10-07T01%3A54%3A14Z&sks=b&skv=2026-02-06&sig=dJlAv1MTWI4OD/K%2BlOnXdpFX4JpdJc5Up5sAknXLdRs%3D'
 
     steps:
       - uses: actions/checkout@v4
