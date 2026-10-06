@@ -1,0 +1,76 @@
+name: Seed Demo Studio Premium Voice Reference
+
+on:
+  push:
+    branches:
+      - vii-125-demo-studio-voice-seed
+    paths:
+      - '.github/workflows/seed-demo-studio-voice-reference.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      SOURCE_URL: 'https://sdmntpraustraliaeast.oaiusercontent.com/files/00000000-0384-81fa-80b6-d5f5ae9a288b/raw?se=2026-10-06T18%3A12%3A20Z&sp=r&sv=2026-02-06&sr=b&scid=e3eade2f-c50f-5de5-bb22-d58ee584801e&skoid=27fbae2c-124f-4566-a0d8-1b07a5a41c53&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-10-06T04%3A58%3A45Z&ske=2026-10-07T04%3A58%3A45Z&sks=b&skv=2026-02-06&sig=FF0vh0f6iaLxf%2B7XuiklOo6QQFOtsW8s5IGdJRtIReE%3D'
+      EXPECTED_SHA256: 6106dc2efca1f7cbd6dcc52bf480afec2aeafe1c43a10618a82486d4e5577de4
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Verify RIC Cloudflare credentials
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
+
+      - name: Download approved source artifact
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 --connect-timeout 10 --max-time 180 \
+            "${SOURCE_URL}" -o /tmp/max-tour-v9.zip
+          unzip -q /tmp/max-tour-v9.zip voiceover_ru.wav -d /tmp/reference
+          test -s /tmp/reference/voiceover_ru.wav
+
+      - name: Prepare canonical Niki reference
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          ffmpeg -y -hide_banner -loglevel error \
+            -i /tmp/reference/voiceover_ru.wav \
+            -t 8.8 \
+            -af "highpass=f=70,lowpass=f=11500,loudnorm=I=-17:TP=-2:LRA=8" \
+            -ar 24000 -ac 1 /tmp/niki-reference.wav
+          actual=$(sha256sum /tmp/niki-reference.wav | awk '{print $1}')
+          test "${actual}" = "${EXPECTED_SHA256}"
+
+      - name: Upload canonical reference to private Demo Studio R2
+        run: |
+          set -euo pipefail
+          npx wrangler@4 r2 object put \
+            viiversion-demo-studio-artifacts/voice-references/niki-reference.wav \
+            --file=/tmp/niki-reference.wav \
+            --content-type=audio/wav \
+            --remote
+
+      - name: Verify stored reference
+        run: |
+          set -euo pipefail
+          npx wrangler@4 r2 object get \
+            viiversion-demo-studio-artifacts/voice-references/niki-reference.wav \
+            --file=/tmp/niki-reference-check.wav \
+            --remote
+          actual=$(sha256sum /tmp/niki-reference-check.wav | awk '{print $1}')
+          test "${actual}" = "${EXPECTED_SHA256}"
+          echo "NIKI_REFERENCE_R2=verified"
+          echo "NIKI_REFERENCE_SHA256=${actual}"
