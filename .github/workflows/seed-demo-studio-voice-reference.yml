@@ -54,22 +54,91 @@ jobs:
           echo "NIKI_REFERENCE_SHA256=${actual}" >> "${GITHUB_ENV}"
           echo "Prepared Niki reference: ${actual}"
 
-      - name: Upload canonical reference to private Demo Studio R2
+      - name: Seed R2 through ephemeral Worker binding
+        shell: bash
         run: |
           set -euo pipefail
-          npx wrangler@4 r2 object put \
-            viiversion-demo-studio-artifacts/voice-references/niki-reference.wav \
-            --file=/tmp/niki-reference.wav \
-            --content-type=audio/wav \
-            --remote
 
-      - name: Verify stored reference
-        run: |
-          set -euo pipefail
-          npx wrangler@4 r2 object get \
-            viiversion-demo-studio-artifacts/voice-references/niki-reference.wav \
-            --file=/tmp/niki-reference-check.wav \
-            --remote
+          seed_worker="demo-studio-r2-seed-${GITHUB_RUN_ID}"
+          seed_token=$(openssl rand -hex 24)
+
+          cat > /tmp/seed-worker.js <<'JS'
+          export default {
+            async fetch(request, env) {
+              if (request.headers.get("x-seed-token") !== env.SEED_TOKEN) {
+                return new Response("Unauthorized", { status: 401 });
+              }
+
+              const key = "voice-references/niki-reference.wav";
+              if (request.method === "PUT") {
+                const body = await request.arrayBuffer();
+                if (body.byteLength < 10000) {
+                  return new Response("Reference too small", { status: 400 });
+                }
+                await env.BUCKET.put(key, body, {
+                  httpMetadata: {
+                    contentType: "audio/wav",
+                    cacheControl: "private, max-age=31536000, immutable",
+                  },
+                });
+                return Response.json({ ok: true, bytes: body.byteLength });
+              }
+
+              if (request.method === "GET") {
+                const object = await env.BUCKET.get(key);
+                if (!object) return new Response("Not found", { status: 404 });
+                return new Response(object.body, {
+                  headers: {
+                    "content-type": "audio/wav",
+                    "content-length": String(object.size),
+                    "cache-control": "no-store",
+                  },
+                });
+              }
+
+              return new Response("Method not allowed", { status: 405 });
+            },
+          };
+          JS
+
+          cat > /tmp/wrangler-seed.jsonc <<EOF
+          {
+            "name": "${seed_worker}",
+            "main": "/tmp/seed-worker.js",
+            "compatibility_date": "2026-10-01",
+            "workers_dev": true,
+            "vars": {
+              "SEED_TOKEN": "${seed_token}"
+            },
+            "r2_buckets": [
+              {
+                "binding": "BUCKET",
+                "bucket_name": "viiversion-demo-studio-artifacts"
+              }
+            ]
+          }
+          EOF
+
+          cleanup() {
+            npx wrangler@4 delete "${seed_worker}" --force >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          npx wrangler@4 deploy --config /tmp/wrangler-seed.jsonc 2>&1 | tee /tmp/seed-deploy.log
+          seed_url=$(grep -Eo 'https://[^ ]+\.workers\.dev' /tmp/seed-deploy.log | tail -n 1)
+          test -n "${seed_url}"
+
+          curl -fsS -X PUT "${seed_url}" \
+            -H "x-seed-token: ${seed_token}" \
+            -H "content-type: audio/wav" \
+            --data-binary @/tmp/niki-reference.wav \
+            > /tmp/seed-result.json
+          jq -e '.ok == true and .bytes > 10000' /tmp/seed-result.json >/dev/null
+
+          curl -fsS "${seed_url}" \
+            -H "x-seed-token: ${seed_token}" \
+            -o /tmp/niki-reference-check.wav
+
           actual=$(sha256sum /tmp/niki-reference-check.wav | awk '{print $1}')
           test "${actual}" = "${NIKI_REFERENCE_SHA256}"
           echo "NIKI_REFERENCE_R2=verified"
