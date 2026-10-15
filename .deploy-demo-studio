@@ -1,5 +1,5 @@
 demostudio.viiversion.com
 release=0.14.1
-source=aece615aa82adf34e2fb60f08bae2a4979c2c057
+source=e25a8b4117086137969f14359e5f208a5191762a
 channel=production
-retry=premium-ru-en-default-2026-10-05T22-59+07
+retry=container-idle-control-2026-10-15
