@@ -1,0 +1,60 @@
+name: Inspect Proposal Cloudflare access (no deployments)
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/proposal-cloudflare-inspect.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Verify existing account access without exporting secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,json,urllib.request,urllib.error
+          tok=os.getenv("CLOUDFLARE_API_TOKEN","")
+          acc=os.getenv("CLOUDFLARE_ACCOUNT_ID","")
+          out={"cloudflare_token_present":bool(tok),"account_id_present":bool(acc),"account_id_format_ok":len(acc)==32 and all(c in '0123456789abcdef' for c in acc.lower())}
+          if not(tok and out["account_id_format_ok"]):
+              print(json.dumps(out));raise SystemExit(1)
+          def check(url,token):
+              req=urllib.request.Request(url,headers={"Authorization":"Bearer "+token,"Accept":"application/json"})
+              try:
+                  with urllib.request.urlopen(req,timeout=14) as r: return r.status,r.read(30000)
+              except urllib.error.HTTPError as e: return e.code,e.read(1000)
+              except Exception: return 0,b""
+          st,body=check("https://api.cloudflare.com/client/v4/user/tokens/verify",tok)
+          out["cloudflare_token_verify_http"]=st
+          if st==200:
+              try:out["cloudflare_token_active"]=json.loads(body).get("result",{}).get("status")=="active"
+              except:out["cloudflare_token_active"]=False
+          for name,label in (("viiversion-personal-web-staging","personal_web_staging"),("viiversion-proposal-staging","proposal_staging")):
+              root=f"https://api.cloudflare.com/client/v4/accounts/{acc}/workers/scripts/{name}"
+              code,_=check(root,tok)
+              out[label+"_script_http"]=code
+              if code==200:
+                  code,raw=check(root+"/secrets",tok)
+                  out[label+"_secrets_http"]=code
+                  if code==200:
+                      try:
+                          obj=json.loads(raw)
+                          names={item.get("name") for item in obj.get("result",[]) if isinstance(item,dict)}
+                          required=(["WEB_API_TOKEN","SESSION_VAULT_KEY","PROPOSAL_READ_TOKEN"] if label=="personal_web_staging" else ["PERSONAL_WEB_READ_TOKEN"])
+                          out[label+"_necessary_secret_names_present"]={x:x in names for x in required}
+                      except:out[label+"_secrets_parse_error"]=True
+          repo_code,_=check("https://api.github.com/repos/mirozdanie6v/viiversion-personal-web",os.getenv("GH_TOKEN",""))
+          out["github_ric_token_access_to_private_browser_repo_http"]=repo_code
+          print(json.dumps(out,sort_keys=True))
+          PY
